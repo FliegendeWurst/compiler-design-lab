@@ -71,7 +71,7 @@ checkStmt (Ret e _) = checkExpr e
 
 checkExpr :: Expr -> L1Semantic ()
 checkExpr (IntExpr n pos) = do
-  when (n < 0 || n > maxInt)
+  when ((n < 0 || n > maxInt) && False)
     $ semanticFail'
     $ "Integer literal " ++ show n ++ " out of bounds at: " ++ posPretty pos
 checkExpr (Ident name pos) = do

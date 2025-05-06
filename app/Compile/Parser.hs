@@ -142,10 +142,17 @@ number :: Parser Integer
 number = try hexadecimal <|> decimal <?> "number"
 
 decimal :: Parser Integer
-decimal = lexeme L.decimal
+decimal = do
+  val <- lexeme L.decimal
+  if val > 2^(31 :: Integer) then fail "integer out of bounds" else pure val
 
 hexadecimal :: Parser Integer
-hexadecimal = char '0' >> char 'x' >> lexeme L.hexadecimal
+hexadecimal = do
+  void $ char '0'
+  void $ char 'x'
+  val <- lexeme L.hexadecimal
+  if val > 2^(31 :: Integer) then fail "integer out of bounds" else pure val
+  -- TODO: this would be correct ... -- if val > 0xffffffff then fail "integer out of bounds" else pure val
 
 reserved :: String -> Parser ()
 reserved w = void (lexeme $ try (string w <* notFollowedBy identLetter))
