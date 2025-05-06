@@ -18,6 +18,8 @@ executable l1c
     main-is:          Main.hs
     build-depends:
                   base >= 4.15 && < 5,
+                  typed-process >= 0.2.13.0 && < 1,
+                  template-haskell >= 2.20.0.0 && < 3,
                   containers,
                   directory,
                   filepath,
@@ -28,6 +30,7 @@ executable l1c
                   transformers
     other-modules:
                   Args,
+                  TH,
                   Compile,
                   Compile.AST,
                   Compile.Parser,

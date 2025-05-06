@@ -1,3 +1,5 @@
+{-# LANGUAGE QuasiQuotes #-}
+
 module Compile.AAsm
   ( codeGen
   ) where
@@ -6,6 +8,8 @@ import           Compile.AST (AST(..), Expr(..), Stmt(..), showAsgnOp)
 
 import           Control.Monad.State
 import qualified Data.Map as Map
+
+import TH (litFile)
 
 type Register = Integer
 
@@ -21,13 +25,17 @@ data CodeGenState = CodeGenState
   , code :: [String]
   }
 
+assemblyTemplate :: String
+assemblyTemplate = [litFile|app/Compile/assembly_template.s|]
+
 codeGen :: AST -> [String]
-codeGen (Block stmts _) = code $ execState (genBlock stmts) initialState
+codeGen (Block stmts _) = lines assemblyTemplate ++ code (execState (genBlock stmts) initialState)
   where
     initialState = CodeGenState Map.empty 0 []
 
 regName :: Register -> String
-regName n = "%" ++ show n
+regName 0 = "eax"
+regName _ = fail "out of registers :("
 
 freshReg :: CodeGen Register
 freshReg = do
@@ -66,12 +74,13 @@ genStmt (Asgn name op e _) = do
   emit $ regName lhs ++ showAsgnOp op ++ regName rhs
 genStmt (Ret e _) = do
   r <- genExpr e
-  emit $ "ret " ++ regName r
+  emit $ "mov " ++ regName 0 ++ ", " ++ regName r
+  emit "ret"
 
 genExpr :: Expr -> CodeGen Register
 genExpr (IntExpr n _) = do
   r <- freshReg
-  emit $ regName r ++ " = " ++ show n
+  emit $ "mov " ++ regName r ++ ", " ++ show n
   return r
 genExpr (Ident name _) = lookupVar name
 genExpr (UnExpr op e) = do
