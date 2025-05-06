@@ -18,7 +18,7 @@ jobs:
         if: github.event_name == 'push'
         run: |
           set -euo pipefail
-          export MESSAGE="$(echo "$COMMIT_MESSAGE" | head -n1)"
+          export MESSAGE="$(echo "$COMMIT_MESSAGE")"
           echo "MESSAGE=$MESSAGE" >> $GITHUB_ENV
           echo "GH_COMMIT=$GITHUB_SHA" >> $GITHUB_ENV
           echo "Found message"
