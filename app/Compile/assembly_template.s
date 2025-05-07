@@ -13,6 +13,3 @@ mov rdi, rax
 # move the exit syscall number into rax
 mov rax,0x3C
 syscall
-_main:
-# your generated code here
-enter 3000, 0

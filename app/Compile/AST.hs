@@ -4,6 +4,7 @@ module Compile.AST
   , Expr(..)
   , HexOrDecInteger(..)
   , intValue
+  , AsgnOp
   , Op(..)
   , showAsgnOp
   , posPretty

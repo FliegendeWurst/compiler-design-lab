@@ -1,3 +1,14 @@
+# exclude binaries :)
+*
+!/**/
+!*.*
+
 cabal.project.local
 cabal.project.local~
 dist-newstyle/
+
+/tests
+/*.l1
+/*.s
+/*.png
+/*.dot

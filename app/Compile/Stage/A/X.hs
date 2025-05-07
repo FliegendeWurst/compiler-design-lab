@@ -1,0 +1,344 @@
+{-# LANGUAGE LambdaCase #-}
+
+module Compile.Stage.A.X
+  ( fromXToA
+  ) where
+
+import           Compile.AST ( Op (..) )
+
+import           Control.Monad.State
+import qualified Data.Map as Map
+
+import Data.Maybe (listToMaybe)
+import Data.Foldable (forM_)
+import Compile.IR.A (A, Function, Inst (..), Register, RegOrMem (..), xmm0, eax, edx)
+import Compile.IR.Y (Expr (..), LitOrIdent (..))
+import Compile.IR.X (X, Stmt (Asgn, Decl) )
+import qualified Compile.IR.X as X
+import qualified Compile.IR.A as A
+import Data.Functor (void)
+import Data.Map (Map)
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Control.Monad (when)
+import qualified Compile.IR.Y as Y
+
+
+type VarName = String
+
+type AAsmAlloc = Map VarName RegOrMem
+
+type CodeGen a = State CodeGenState a
+
+data CodeGenState = CodeGenState
+  { regMap :: AAsmAlloc
+  , usedRegs :: Set Register
+  , freeStackSlots :: Set Integer
+  , nextStackSlot :: Integer
+  , nextExpr :: Integer
+  , code :: [Inst]
+  }
+  deriving (Show)
+
+fromXToA :: X -> A
+fromXToA = map function'
+
+function' :: X.Function -> Function
+function' (X.Function name stmts) = A.Function name 10000 $ code (execState (genBlock stmts) initialState)
+  where
+    initialState = CodeGenState Map.empty Set.empty Set.empty 0 0 []
+
+regsToAllocate :: [Register]
+regsToAllocate = [1,2,4,5,8,9,10,11,12,13,14,15]
+
+nextReg :: CodeGen (Maybe Register)
+nextReg = do
+  curr <- get
+  let mapX = usedRegs curr
+  let freeRegs = filter (`Set.notMember` mapX) regsToAllocate
+  return $ listToMaybe freeRegs
+
+spillSomeRegs :: CodeGen ()
+spillSomeRegs = do
+  -- just spill all for now
+  curr <- get
+  let mapPrevious = regMap curr
+  -- emit $ Comment $ "spilling " ++ show mapPrevious
+  forM_ (Map.assocs mapPrevious) (\case
+    (name, Reg y) -> do
+      newLoc <- spillReg y
+      modify $ \s -> s { regMap = Map.insert name newLoc (regMap s) }
+      modify $ \s -> s { usedRegs = Set.delete y (usedRegs s) }
+    _ -> return ()
+    )
+
+spillReg :: Register -> CodeGen RegOrMem
+spillReg x = do
+  ss <- getFreeStackSlot 
+  emit $ Mov (Mem ss) (Reg x)
+  return $ Mem ss
+
+getFreeStackSlot :: CodeGen Integer
+getFreeStackSlot = do
+  free <- gets freeStackSlots
+  case Set.lookupMin free of
+    Nothing -> do
+      ss <- gets nextStackSlot
+      modify $ \s -> s {nextStackSlot = ss + 1}
+      return ss
+    Just it -> do
+      modify $ \s -> s { freeStackSlots = Set.delete it free }
+      return it
+    
+
+freshReg :: CodeGen Register
+freshReg = do
+  r <- nextReg
+  case r of
+    Nothing -> do
+      spillSomeRegs
+      freshReg
+    Just reg -> do
+      when (reg > 15) (error "incorrect register used")
+      return reg
+
+assignVar :: VarName -> RegOrMem -> CodeGen ()
+assignVar name r = do
+  curr <- gets regMap
+  case Map.lookup name curr of
+    Just (Reg y) -> modify $ \s -> s { usedRegs = Set.delete y (usedRegs s) }
+    _ -> return ()
+  modify $ \s -> s {regMap = Map.insert name r (regMap s)}
+  case r of
+    Reg y -> modify $ \s -> s { usedRegs = Set.insert y (usedRegs s) }
+    _ -> return ()
+  --curr <- get
+  --if 2 == unsafePerformIO (do
+  --  print $ show curr
+  --  return 1) then error "failure" else return ()
+
+lookupVar :: VarName -> CodeGen RegOrMem
+lookupVar name = do
+  m <- gets regMap
+  case Map.lookup name m of
+    Just r -> return r
+    Nothing -> error $ "unreachable, fix your semantic analysis I guess " ++ name ++ " map = " ++ show m
+
+reloadVar :: VarName -> CodeGen RegOrMem
+reloadVar name = do
+  m <- gets regMap
+  case Map.lookup name m of
+    Just (Reg r) -> return $ Reg r
+    Just (Mem x) -> do
+      newReg <- reload (Mem x)
+      modify $ \s -> s { regMap = Map.insert name (Reg newReg) (regMap s) }
+      modify $ \s -> s { usedRegs = Set.insert newReg (usedRegs s) }
+      modify $ \s -> s { freeStackSlots = Set.insert x (freeStackSlots s) }
+      return $ Reg newReg
+    Just (Imm i) -> do
+      return $ Imm i
+      --newReg <- freshReg
+      --emit $ Mov (Reg newReg) (Imm i)
+      --modify $ \s -> s {regMap = Map.insert name (Reg newReg) (regMap s)}
+      --modify $ \s -> s { usedRegs = Set.insert newReg (usedRegs s) }
+      --return newReg
+    Nothing -> error $ "failed to reload var " ++ name
+
+discardVar :: VarName -> CodeGen ()
+discardVar name = do
+  m <- gets regMap
+  case Map.lookup name m of
+    Just (Reg r) -> do
+      modify $ \s -> s { usedRegs = Set.delete r (usedRegs s) }
+    Just (Mem x) -> do
+      modify $ \s -> s { freeStackSlots = Set.insert x (freeStackSlots s) }
+    Just (Imm _) -> return ()
+    Nothing -> return () -- odd
+  modify $ \s -> s { regMap = Map.delete name m }
+
+reloadVarForWrite :: VarName -> CodeGen Register
+reloadVarForWrite name = do
+  m <- gets regMap
+  case Map.lookup name m of
+    Just (Reg r) -> return r
+    Just (Mem x) -> do
+      newReg <- reload (Mem x)
+      modify $ \s -> s { regMap = Map.insert name (Reg newReg) (regMap s) }
+      modify $ \s -> s { usedRegs = Set.insert newReg (usedRegs s) }
+      modify $ \s -> s { freeStackSlots = Set.insert x (freeStackSlots s) }
+      return newReg
+    Just (Imm _) -> do
+      newReg <- freshReg
+      modify $ \s -> s {regMap = Map.insert name (Reg newReg) (regMap s)}
+      modify $ \s -> s { usedRegs = Set.insert newReg (usedRegs s) }
+      return newReg
+    Nothing -> error "unreachable, fix your semantic analysis I guess"
+
+reload :: RegOrMem -> CodeGen Register
+reload (Reg x) = return x
+reload (Mem x) = do
+  emit $ Mov xmm0 (Mem x)
+  reg <- freshReg
+  emit $ Mov (Reg reg) xmm0
+  return reg
+reload (Imm i) = do
+  newReg <- freshReg
+  emit $ Mov (Reg newReg) (Imm i)
+  return newReg
+
+emit :: Inst -> CodeGen ()
+emit instr = modify $ \s -> s {code = code s ++ [instr]}
+
+genBlock :: [Stmt] -> CodeGen ()
+genBlock = mapM_ genStmt
+
+genStmt :: Stmt -> CodeGen ()
+genStmt (Decl name) = do
+  emit $ Comment $ "decl " ++ show name
+  r <- freshReg
+  assignVar name $ Reg r
+genStmt (X.Discard name) = do
+  discardVar name
+genStmt (Asgn name (Plain (Lit n))) = do
+  emit $ Comment $ "asgn literal " ++ show name ++ " " ++ show n
+  assignVar name $ Imm n
+genStmt (Asgn name (Plain (Ident n))) = do
+  emit $ Comment $ "asgn " ++ show name ++ " = " ++ show n
+  rhs <- reloadVar n
+  lhs <- reloadVarForWrite name
+  emit $ Mov (Reg lhs) rhs
+genStmt (Asgn name (UnExpr op (Lit n))) = do
+  emit $ Comment $ "asgn to unary op " ++ show name ++ " = " ++ show op ++ show n
+  r <- reloadVarForWrite name
+  void $ case op of
+    Compile.AST.Neg -> return ()
+    _ -> error "illegal unary operation"
+  emit $ Mov (Reg r) (Imm n)
+  emit $ A.Neg (Reg r)
+genStmt (Asgn name (UnExpr op (Ident n))) = do
+  emit $ Comment $ "asgn to unary op " ++ show name ++ " = " ++ show op ++ show n
+  rhs <- reloadVar n
+  r <- reloadVarForWrite name
+  void $ case op of
+    Compile.AST.Neg -> return ()
+    _ -> error "illegal unary operation"
+  emit $ Mov (Reg r) rhs
+  emit $ A.Neg (Reg r)
+genStmt (Asgn name (BinExpr op e1 e2)) = do
+  emit $ Comment $ "asgn to binary op " ++ show name ++ " = " ++ show op ++ show e1 ++ " " ++ show e2
+  r1 <- genExpr $ Plain e1
+  r2 <- genExpr $ Plain e2
+  reg <- reloadVarForWrite name
+  let r = Reg reg
+  case op of
+    Compile.AST.Add -> do
+      emit $ Mov r r1
+      emit $ A.Add r r2
+    Compile.AST.Sub -> do
+      emit $ Mov r r1
+      emit $ A.Sub r r2
+    Compile.AST.Mul -> do
+      emit $ Mov r r1
+      emit $ A.Mul r r2
+    Compile.AST.Div -> do
+      emit $ Mov eax r1
+      emit Cdq
+      r2InRegister <- case r2 of
+        Imm _ -> do
+          newReg <- freshReg
+          emit $ Mov (Reg newReg) r2
+          return (Reg newReg)
+        Reg register -> return $ Reg register
+        Mem x -> return $ Mem x
+      emit $ A.Div r2InRegister
+      emit $ Mov r eax
+    Mod -> do
+      emit $ Mov eax r1
+      emit Cdq
+
+      r2InRegister <- case r2 of
+        Imm _ -> do
+          newReg <- freshReg
+          emit $ Mov (Reg newReg) r2
+          return (Reg newReg)
+        Reg register -> return $ Reg register
+        Mem x -> return $ Mem x
+
+      emit $ A.Div r2InRegister
+      emit $ Mov r edx
+    Compile.AST.Neg -> error "not a binary op"
+    Nop -> error "not a binary op"
+genStmt (X.Ret (Lit n)) = do
+  emit $ Mov eax (Imm n)
+  emit Leave
+  emit Return
+genStmt (X.Ret (Ident n)) = do
+  rhs <- reloadVar n
+  emit $ Mov eax rhs
+  emit Leave
+  emit Return
+
+genExpr :: Y.Expr -> CodeGen RegOrMem
+genExpr (Plain (Lit n)) = return $ Imm n
+genExpr (Plain (Ident name)) = lookupVar name
+genExpr (UnExpr op e) = do
+  r1 <- genExpr $ Plain e
+  r <- freshReg
+  modify $ \s -> s { regMap = Map.insert ("expr__Internal_" ++ show (nextExpr s)) (Reg r) (regMap s) }
+  modify $ \s -> s { usedRegs = Set.insert r (usedRegs s) }
+  modify $ \s -> s { nextExpr = nextExpr s + 1 }
+
+  void $ case op of
+    Compile.AST.Neg -> return ()
+    _ -> error "illegal unary operation"
+  emit $ Mov (Reg r) r1
+  emit $ A.Neg (Reg r)
+  return $ Reg r
+genExpr (BinExpr op e1 e2) = do
+  r1 <- genExpr $ Plain e1
+  r2 <- genExpr $ Plain e2
+  fresh <- freshReg
+  let r = Reg fresh
+  modify $ \s -> s { regMap = Map.insert ("expr__Internal_" ++ show (nextExpr s)) r (regMap s) }
+  modify $ \s -> s { usedRegs = Set.insert fresh (usedRegs s) }
+  modify $ \s -> s { nextExpr = nextExpr s + 1 }
+
+  case op of
+    Compile.AST.Add -> do
+      emit $ Mov r r1
+      emit $ A.Add r r2
+    Compile.AST.Sub -> do
+      emit $ Mov r r1
+      emit $ A.Sub r r2
+    Compile.AST.Mul -> do
+      emit $ Mov r r1
+      emit $ A.Mul r r2
+    Compile.AST.Div -> do
+      emit $ Mov eax r1
+      emit Cdq
+      r2InRegister <- case r2 of
+        Imm _ -> do
+          newReg <- freshReg
+          emit $ Mov (Reg newReg) r2
+          return (Reg newReg)
+        Reg reg -> return $ Reg reg
+        Mem x -> return $ Mem x
+      emit $ A.Div r2InRegister
+      emit $ Mov r eax
+    Mod -> do
+      emit $ Mov eax r1
+      emit Cdq
+
+      r2InRegister <- case r2 of
+        Imm _ -> do
+          newReg <- freshReg
+          emit $ Mov (Reg newReg) r2
+          return (Reg newReg)
+        Reg reg -> return $ Reg reg
+        Mem x -> return $ Mem x
+
+      emit $ A.Div r2InRegister
+      emit $ Mov r edx
+    Compile.AST.Neg -> error "not a binary op"
+    Nop -> error "not a binary op"
+  return r
