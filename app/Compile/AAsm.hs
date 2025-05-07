@@ -33,7 +33,7 @@ type CodeGen a = State CodeGenState a
 
 data CodeGenState = CodeGenState
   { regMap :: AAsmAlloc
-  , regLru :: RegLastUsed
+  , regLru :: RegLastUsed -- TODO
   , nextStackSlot :: Integer
   , nextExpr :: Integer
   , code :: [String]
@@ -122,7 +122,7 @@ lookupVar name = do
     Nothing -> error "unreachable, fix your semantic analysis I guess"
 
 loadStack :: Integer -> String
-loadStack x = "[rsp + " ++ show (4*x) ++ "]"
+loadStack x = "DWORD PTR [rsp + " ++ show (4*x) ++ "]"
 
 reloadVar :: VarName -> CodeGen Register
 reloadVar name = do
