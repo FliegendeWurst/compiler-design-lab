@@ -2,7 +2,7 @@ module Compile.Parser
   ( parseAST
   ) where
 
-import           Compile.AST (AST(..), Expr(..), Op(..), Stmt(..))
+import           Compile.AST (AST(..), Expr(..), Op(..), Stmt(..), HexOrDecInteger (..))
 import           Error (L1ExceptT, parserFail)
 
 import           Control.Monad.Combinators.Expr
@@ -138,21 +138,29 @@ braces = between (symbol "{") (symbol "}")
 semi :: Parser ()
 semi = void $ symbol ";"
 
-number :: Parser Integer
-number = try hexadecimal <|> decimal <?> "number"
+number :: Parser HexOrDecInteger
+number = try hexadecimal <|> decimal <|> decimal0 <?> "number"
 
-decimal :: Parser Integer
+decimal :: Parser HexOrDecInteger
 decimal = do
+  void $ lookAhead $ oneOf "123456789"
   val <- lexeme L.decimal
-  if val > 2^(31 :: Integer) then fail "integer out of bounds" else pure val
+  return $ Dec val
 
-hexadecimal :: Parser Integer
+decimal0 :: Parser HexOrDecInteger
+decimal0 = do
+  void $ char '0'
+  void sc
+  return $ Dec 0
+
+hexadecimal :: Parser HexOrDecInteger
 hexadecimal = do
   void $ char '0'
   void $ char 'x'
   val <- lexeme L.hexadecimal
-  if val > 2^(31 :: Integer) then fail "integer out of bounds" else pure val
-  -- TODO: this would be correct ... -- if val > 0xffffffff then fail "integer out of bounds" else pure val
+  --if val > 2^(31 :: Integer) then fail "integer out of bounds" else pure val
+  --if val > 0xffffffff then fail "integer out of bounds" else pure val
+  return $ Hex val
 
 reserved :: String -> Parser ()
 reserved w = void (lexeme $ try (string w <* notFollowedBy identLetter))

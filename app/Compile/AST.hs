@@ -2,6 +2,8 @@ module Compile.AST
   ( AST(..)
   , Stmt(..)
   , Expr(..)
+  , HexOrDecInteger(..)
+  , intValue
   , Op(..)
   , showAsgnOp
   , posPretty
@@ -20,10 +22,18 @@ data Stmt
   | Ret Expr SourcePos
 
 data Expr
-  = IntExpr Integer SourcePos
+  = IntExpr HexOrDecInteger SourcePos
   | Ident String SourcePos
   | UnExpr Op Expr
   | BinExpr Op Expr Expr
+
+data HexOrDecInteger
+  = Hex Integer
+  | Dec Integer
+
+intValue :: HexOrDecInteger -> Integer
+intValue (Hex x) = x
+intValue (Dec x) = x
 
 -- Nothing means =, Just is for +=, %=, ...
 type AsgnOp = Maybe Op
@@ -57,7 +67,7 @@ instance Show Stmt where
   show (Ret e _) = "Return: " ++ show e
 
 instance Show Expr where
-  show (IntExpr i _) = show i
+  show (IntExpr i _) = show (intValue i)
   show (Ident name _) = name
   show (UnExpr op e) = "(" ++ show op ++ " " ++ show e ++ ")"
   show (BinExpr op lhs rhs) =

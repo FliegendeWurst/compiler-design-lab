@@ -15,4 +15,4 @@ mov rax,0x3C
 syscall
 _main:
 # your generated code here
-
+enter 100, 0

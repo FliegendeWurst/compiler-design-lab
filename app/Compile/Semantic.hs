@@ -2,7 +2,7 @@ module Compile.Semantic
   ( semanticAnalysis
   ) where
 
-import           Compile.AST (AST(..), Expr(..), Stmt(..), posPretty)
+import           Compile.AST (AST(..), Expr(..), Stmt(..), posPretty, HexOrDecInteger (..), intValue)
 import           Error (L1ExceptT, semanticFail)
 
 import           Control.Monad (unless, when)
@@ -32,9 +32,6 @@ semanticAnalysis ast = do
 varStatusAnalysis :: AST -> L1ExceptT Namespace
 varStatusAnalysis (Block stmts _) = do
   execStateT (mapM_ checkStmt stmts) Map.empty
-
-maxInt :: Integer
-maxInt = 2 ^ (31 :: Integer)
 
 -- So far this checks:
 -- + we cannot declare a variable again that has already been declared or initialized
@@ -71,9 +68,9 @@ checkStmt (Ret e _) = checkExpr e
 
 checkExpr :: Expr -> L1Semantic ()
 checkExpr (IntExpr n pos) = do
-  when ((n < 0 || n > maxInt) && False)
+  when (invalidIntegerLiteral n)
     $ semanticFail'
-    $ "Integer literal " ++ show n ++ " out of bounds at: " ++ posPretty pos
+    $ "Integer literal " ++ show (intValue n) ++ " out of bounds at: " ++ posPretty pos
 checkExpr (Ident name pos) = do
   ns <- get
   case Map.lookup name ns of
@@ -86,6 +83,10 @@ checkExpr (Ident name pos) = do
             ++ posPretty pos
 checkExpr (UnExpr _ e) = checkExpr e
 checkExpr (BinExpr _ lhs rhs) = checkExpr lhs >> checkExpr rhs
+
+invalidIntegerLiteral :: HexOrDecInteger -> Bool
+invalidIntegerLiteral (Dec x) = x < 0 || x >2^(31 :: Integer)
+invalidIntegerLiteral (Hex x) = x < 0 || x > 0xffffffff
 
 checkReturns :: AST -> L1Semantic ()
 checkReturns (Block stmts _) = do
