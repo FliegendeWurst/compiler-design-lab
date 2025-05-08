@@ -89,13 +89,18 @@ ret = do
   return $ Ret e pos
 
 expr' :: Parser Expr
-expr' = parens expr <|> intExpr <|> identExpr
+expr' = parens expr <|> intExpr <|> identExpr <|> unExpr
 
 intExpr :: Parser Expr
 intExpr = do
   pos <- getSourcePos
   val <- number
   return $ IntExpr val pos
+
+unExpr :: Parser Expr
+unExpr = do
+  void $ symbol "-"
+  UnExpr Neg <$> expr'
 
 identExpr :: Parser Expr
 identExpr = do
