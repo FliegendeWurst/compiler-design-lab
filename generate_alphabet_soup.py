@@ -1,17 +1,19 @@
 from random import randint,choice
 from string import ascii_lowercase
 
+target = ascii_lowercase[:5]
+
 print("int main() {")
 
-for x in ascii_lowercase:
+for x in target:
     print("  int", x, "=", randint(10,100), end=";\n");
 
-for x in ascii_lowercase:
+for x in target:
     print(" ", x, "=", end=" ")
-    for y in ascii_lowercase[:-1]:
+    for y in target[:-1]:
         print(y, choice("+-/*%"), end=" ")
-    print(ascii_lowercase[-1], end=";\n")
+    print(target[-1], end=";\n")
 
 
-print("  return z;")
+print("  return", target[-1], ";")
 print("}")

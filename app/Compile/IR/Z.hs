@@ -4,9 +4,9 @@ module Compile.IR.Z
     , Stmt(..)
     , Expr(..)
     , AsgnOp
-    , Op
+    , BinOp(..)
+    , UnOp(..)
     ) where
-import qualified Compile.AST as AST
 import Data.Int (Int32)
 
 type Z = [Function]
@@ -25,10 +25,20 @@ data Stmt
 data Expr
   = Lit Int32
   | Ident String
-  | UnExpr Op Expr
-  | BinExpr Op Expr Expr
+  | UnExpr UnOp Expr
+  | BinExpr BinOp Expr Expr
 
 -- Nothing means =, Just is for +=, %=, ...
-type AsgnOp = AST.AsgnOp
+type AsgnOp = Maybe BinOp
 
-type Op = AST.Op
+data BinOp
+  = Mul
+  | Add
+  | Sub
+  | Div
+  | Mod
+  deriving (Eq, Show)
+
+data UnOp
+  = Neg
+  deriving (Eq, Show)

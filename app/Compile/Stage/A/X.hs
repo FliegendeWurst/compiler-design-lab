@@ -4,7 +4,6 @@ module Compile.Stage.A.X
   ( fromXToA
   ) where
 
-import           Compile.AST ( Op (..) )
 
 import           Control.Monad.State
 import qualified Data.Map as Map
@@ -22,6 +21,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Control.Monad (when)
 import qualified Compile.IR.Y as Y
+import qualified Compile.IR.Z as Z
 
 
 type VarName = String
@@ -212,54 +212,47 @@ genStmt (Asgn name (Plain (Ident n))) = do
       emit $ Mov (Reg lhs) rhs
 genStmt (Asgn name (UnExpr op (Lit n))) = do
   emit $ Comment $ "asgn to unary op " ++ show name ++ " = " ++ show op ++ show n
-  r <- reloadVarForWrite name
-  void $ case op of
-    Compile.AST.Neg -> return ()
-    _ -> error "illegal unary operation"
-  emit $ Mov (Reg r) (Imm n)
-  emit $ A.Neg (Reg r)
+  assignVar name (Imm $ -n)
 genStmt (Asgn name (UnExpr op (Ident n))) = do
   emit $ Comment $ "asgn to unary op " ++ show name ++ " = " ++ show op ++ show n
   rhs <- reloadVar n
   r <- reloadVarForWrite name
   void $ case op of
-    Compile.AST.Neg -> return ()
-    _ -> error "illegal unary operation"
+    Z.Neg -> return ()
   emit $ Mov (Reg r) rhs
   emit $ A.Neg (Reg r)
 genStmt (Asgn name (BinExpr op e1 e2)) = do
   emit $ Comment $ "asgn to binary op " ++ show name ++ " = " ++ show op ++ " " ++ show e1 ++ " " ++ show e2
-  r1 <- genExpr $ Plain e1
-  r2 <- genExpr $ Plain e2
+  r1 <- genPlainExpr e1
+  r2 <- genPlainExpr e2
   case (r1, r2, op) of
-    (Imm i1, Imm i2, o) | (o /= Compile.AST.Div && o /= Mod) || i2 > 0 || i2 < -1 -> do
+    (Imm i1, Imm i2, o) | (o /= Z.Div && o /= Z.Mod) || i2 > 0 || i2 < -1 -> do
       case op of
-        Compile.AST.Add -> do
+        Z.Add -> do
           assignVar name (Imm $ i1 + i2)
-        Compile.AST.Sub ->
+        Z.Sub ->
           assignVar name (Imm $ i1 - i2)
-        Compile.AST.Mul ->
+        Z.Mul ->
           assignVar name (Imm $ i1 * i2)
-        Compile.AST.Div ->
+        Z.Div ->
           assignVar name (Imm $ i1 `quot` i2)
-        Mod ->
+        Z.Mod ->
           assignVar name (Imm $ i1 `rem` i2)
-        _ -> error "illegal binary op"
       return ()
     _ -> do
       reg <- reloadVarForWrite name
       let r = Reg reg
       case op of
-        Compile.AST.Add -> do
+        Z.Add -> do
           emit $ Mov r r1
           emit $ A.Add r r2
-        Compile.AST.Sub -> do
+        Z.Sub -> do
           emit $ Mov r r1
           emit $ A.Sub r r2
-        Compile.AST.Mul -> do
+        Z.Mul -> do
           emit $ Mov r r1
           emit $ A.Mul r r2
-        Compile.AST.Div -> do
+        Z.Div -> do
           emit $ Mov eax r1
           emit Cdq
           r2InRegister <- case r2 of
@@ -271,7 +264,7 @@ genStmt (Asgn name (BinExpr op e1 e2)) = do
             Mem x -> return $ Mem x
           emit $ A.Div r2InRegister
           emit $ Mov r eax
-        Mod -> do
+        Z.Mod -> do
           emit $ Mov eax r1
           emit Cdq
 
@@ -285,8 +278,6 @@ genStmt (Asgn name (BinExpr op e1 e2)) = do
 
           emit $ A.Div r2InRegister
           emit $ Mov r edx
-        Compile.AST.Neg -> error "not a binary op"
-        Nop -> error "not a binary op"
 genStmt (X.Ret (Lit n)) = do
   emit $ Mov eax (Imm n)
   emit Leave
@@ -297,67 +288,6 @@ genStmt (X.Ret (Ident n)) = do
   emit Leave
   emit Return
 
-genExpr :: Y.Expr -> CodeGen RegOrMem
-genExpr (Plain (Lit n)) = return $ Imm n
-genExpr (Plain (Ident name)) = lookupVar name
-genExpr (UnExpr op e) = do
-  r1 <- genExpr $ Plain e
-  r <- freshReg
-  modify $ \s -> s { regMap = Map.insert ("expr__Internal_" ++ show (nextExpr s)) (Reg r) (regMap s) }
-  modify $ \s -> s { usedRegs = Set.insert r (usedRegs s) }
-  modify $ \s -> s { nextExpr = nextExpr s + 1 }
-
-  void $ case op of
-    Compile.AST.Neg -> return ()
-    _ -> error "illegal unary operation"
-  emit $ Mov (Reg r) r1
-  emit $ A.Neg (Reg r)
-  return $ Reg r
-genExpr (BinExpr op e1 e2) = do
-  r1 <- genExpr $ Plain e1
-  r2 <- genExpr $ Plain e2
-  fresh <- freshReg
-  let r = Reg fresh
-  modify $ \s -> s { regMap = Map.insert ("expr__Internal_" ++ show (nextExpr s)) r (regMap s) }
-  modify $ \s -> s { usedRegs = Set.insert fresh (usedRegs s) }
-  modify $ \s -> s { nextExpr = nextExpr s + 1 }
-
-  case op of
-    Compile.AST.Add -> do
-      emit $ Mov r r1
-      emit $ A.Add r r2
-    Compile.AST.Sub -> do
-      emit $ Mov r r1
-      emit $ A.Sub r r2
-    Compile.AST.Mul -> do
-      emit $ Mov r r1
-      emit $ A.Mul r r2
-    Compile.AST.Div -> do
-      emit $ Mov eax r1
-      emit Cdq
-      r2InRegister <- case r2 of
-        Imm _ -> do
-          newReg <- freshReg
-          emit $ Mov (Reg newReg) r2
-          return (Reg newReg)
-        Reg reg -> return $ Reg reg
-        Mem x -> return $ Mem x
-      emit $ A.Div r2InRegister
-      emit $ Mov r eax
-    Mod -> do
-      emit $ Mov eax r1
-      emit Cdq
-
-      r2InRegister <- case r2 of
-        Imm _ -> do
-          newReg <- freshReg
-          emit $ Mov (Reg newReg) r2
-          return (Reg newReg)
-        Reg reg -> return $ Reg reg
-        Mem x -> return $ Mem x
-
-      emit $ A.Div r2InRegister
-      emit $ Mov r edx
-    Compile.AST.Neg -> error "not a binary op"
-    Nop -> error "not a binary op"
-  return r
+genPlainExpr :: Y.LitOrIdent -> CodeGen RegOrMem
+genPlainExpr (Lit n) = return $ Imm n
+genPlainExpr (Ident name) = lookupVar name
