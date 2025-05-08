@@ -1,3 +1,4 @@
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module Compile.Assembler
@@ -58,7 +59,8 @@ loc' (Reg 15) = "r15d"
 loc' (Reg 16) = "xmm0"
 loc' (Reg x) = error $ "unknown register " ++ show x
 loc' (Mem x) = "DWORD PTR [rsp + " ++ show (x * 4) ++ "]"
-loc' (Imm n) = "0x" ++ showHex n ""
+loc' (Imm n) | n >= 0 = "0x" ++ showHex n ""
+loc' (Imm n) = "0x" ++ showHex (fromIntegral n + (2 :: Integer)^(32 :: Integer)) ""
 
 displayName :: String -> String
 displayName "main" = "_main"

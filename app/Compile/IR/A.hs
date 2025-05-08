@@ -11,6 +11,7 @@ module Compile.IR.A
     , esp
     , xmm0
     ) where
+import Data.Int (Int32)
 
 type A = [Function]
 
@@ -38,7 +39,7 @@ data Inst
 data RegOrMem
   = Reg Register
   | Mem Memory
-  | Imm Integer
+  | Imm Int32
   deriving (Eq, Ord, Show)
 
 eax = Reg 0

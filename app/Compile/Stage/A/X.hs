@@ -205,8 +205,11 @@ genStmt (Asgn name (Plain (Lit n))) = do
 genStmt (Asgn name (Plain (Ident n))) = do
   emit $ Comment $ "asgn " ++ show name ++ " = " ++ show n
   rhs <- reloadVar n
-  lhs <- reloadVarForWrite name
-  emit $ Mov (Reg lhs) rhs
+  case rhs of
+    Imm i -> assignVar name $ Imm i
+    _ -> do
+      lhs <- reloadVarForWrite name
+      emit $ Mov (Reg lhs) rhs
 genStmt (Asgn name (UnExpr op (Lit n))) = do
   emit $ Comment $ "asgn to unary op " ++ show name ++ " = " ++ show op ++ show n
   r <- reloadVarForWrite name
@@ -225,49 +228,65 @@ genStmt (Asgn name (UnExpr op (Ident n))) = do
   emit $ Mov (Reg r) rhs
   emit $ A.Neg (Reg r)
 genStmt (Asgn name (BinExpr op e1 e2)) = do
-  emit $ Comment $ "asgn to binary op " ++ show name ++ " = " ++ show op ++ show e1 ++ " " ++ show e2
+  emit $ Comment $ "asgn to binary op " ++ show name ++ " = " ++ show op ++ " " ++ show e1 ++ " " ++ show e2
   r1 <- genExpr $ Plain e1
   r2 <- genExpr $ Plain e2
-  reg <- reloadVarForWrite name
-  let r = Reg reg
-  case op of
-    Compile.AST.Add -> do
-      emit $ Mov r r1
-      emit $ A.Add r r2
-    Compile.AST.Sub -> do
-      emit $ Mov r r1
-      emit $ A.Sub r r2
-    Compile.AST.Mul -> do
-      emit $ Mov r r1
-      emit $ A.Mul r r2
-    Compile.AST.Div -> do
-      emit $ Mov eax r1
-      emit Cdq
-      r2InRegister <- case r2 of
-        Imm _ -> do
-          newReg <- freshReg
-          emit $ Mov (Reg newReg) r2
-          return (Reg newReg)
-        Reg register -> return $ Reg register
-        Mem x -> return $ Mem x
-      emit $ A.Div r2InRegister
-      emit $ Mov r eax
-    Mod -> do
-      emit $ Mov eax r1
-      emit Cdq
+  case (r1, r2, op) of
+    (Imm i1, Imm i2, o) | (o /= Compile.AST.Div && o /= Mod) || i2 > 0 || i2 < -1 -> do
+      case op of
+        Compile.AST.Add -> do
+          assignVar name (Imm $ i1 + i2)
+        Compile.AST.Sub ->
+          assignVar name (Imm $ i1 - i2)
+        Compile.AST.Mul ->
+          assignVar name (Imm $ i1 * i2)
+        Compile.AST.Div ->
+          assignVar name (Imm $ i1 `quot` i2)
+        Mod ->
+          assignVar name (Imm $ i1 `rem` i2)
+        _ -> error "illegal binary op"
+      return ()
+    _ -> do
+      reg <- reloadVarForWrite name
+      let r = Reg reg
+      case op of
+        Compile.AST.Add -> do
+          emit $ Mov r r1
+          emit $ A.Add r r2
+        Compile.AST.Sub -> do
+          emit $ Mov r r1
+          emit $ A.Sub r r2
+        Compile.AST.Mul -> do
+          emit $ Mov r r1
+          emit $ A.Mul r r2
+        Compile.AST.Div -> do
+          emit $ Mov eax r1
+          emit Cdq
+          r2InRegister <- case r2 of
+            Imm _ -> do
+              newReg <- freshReg
+              emit $ Mov (Reg newReg) r2
+              return (Reg newReg)
+            Reg register -> return $ Reg register
+            Mem x -> return $ Mem x
+          emit $ A.Div r2InRegister
+          emit $ Mov r eax
+        Mod -> do
+          emit $ Mov eax r1
+          emit Cdq
 
-      r2InRegister <- case r2 of
-        Imm _ -> do
-          newReg <- freshReg
-          emit $ Mov (Reg newReg) r2
-          return (Reg newReg)
-        Reg register -> return $ Reg register
-        Mem x -> return $ Mem x
+          r2InRegister <- case r2 of
+            Imm _ -> do
+              newReg <- freshReg
+              emit $ Mov (Reg newReg) r2
+              return (Reg newReg)
+            Reg register -> return $ Reg register
+            Mem x -> return $ Mem x
 
-      emit $ A.Div r2InRegister
-      emit $ Mov r edx
-    Compile.AST.Neg -> error "not a binary op"
-    Nop -> error "not a binary op"
+          emit $ A.Div r2InRegister
+          emit $ Mov r edx
+        Compile.AST.Neg -> error "not a binary op"
+        Nop -> error "not a binary op"
 genStmt (X.Ret (Lit n)) = do
   emit $ Mov eax (Imm n)
   emit Leave

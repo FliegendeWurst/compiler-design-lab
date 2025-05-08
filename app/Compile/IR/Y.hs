@@ -7,6 +7,7 @@ module Compile.IR.Y
     , Op
     ) where
 import qualified Compile.AST as AST
+import Data.Int (Int32)
 
 type Y = [Function]
 
@@ -29,7 +30,7 @@ data Expr
   deriving (Show)
 
 data LitOrIdent
-  = Lit Integer
+  = Lit Int32
   | Ident String
   deriving (Show)
 

@@ -18,7 +18,7 @@ stmt' (AST.Asgn name op e _) = Asgn name op (expr' e)
 stmt' (AST.Ret e _) = Ret (expr' e)
 
 expr' :: AST.Expr -> Expr
-expr' (AST.IntExpr garbage _) = Lit (intValue garbage)
+expr' (AST.IntExpr garbage _) = Lit $ fromInteger $ intValue garbage
 expr' (AST.Ident name _) = Ident name
 expr' (AST.UnExpr op e) = UnExpr op (expr' e)
 expr' (AST.BinExpr op e1 e2) = BinExpr op (expr' e1) (expr' e2)

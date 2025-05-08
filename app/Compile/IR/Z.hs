@@ -7,6 +7,7 @@ module Compile.IR.Z
     , Op
     ) where
 import qualified Compile.AST as AST
+import Data.Int (Int32)
 
 type Z = [Function]
 
@@ -15,14 +16,14 @@ data Function = Function
     , code :: [Stmt]
     }
 
-data Stmt 
+data Stmt
   = Decl String
   | Init String Expr
   | Asgn String AsgnOp Expr
   | Ret Expr
 
 data Expr
-  = Lit Integer
+  = Lit Int32
   | Ident String
   | UnExpr Op Expr
   | BinExpr Op Expr Expr
