@@ -30,10 +30,12 @@ astParser = do
   reserved "int"
   reserved "main"
   parens $ pure ()
-  braces $ do
+  ast <- braces $ do
     pos <- getSourcePos
     stmts <- many stmt
     return $ Block stmts pos
+  void eof
+  return ast
 
 stmt :: Parser Stmt
 stmt = do
