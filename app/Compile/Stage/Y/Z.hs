@@ -61,21 +61,26 @@ makePlain' :: Z.Expr -> CodeGen LitOrIdent
 makePlain' (Z.Lit value) = return $ Lit value
 makePlain' (Z.Ident name) = return $ Ident name
 makePlain' (Z.UnExpr op e) = do
-    curr <- get
-    let fresh = "temp_" ++ show (nextTemp curr)
-    modify $ \s -> s { nextTemp = nextTemp curr + 1 }
+    fresh <- freshTemp
     e' <- expr' (Z.UnExpr op e)
     modify $ \s -> s { stmts = Asgn fresh e' : Decl fresh : stmts s }
     return $ Ident fresh
 makePlain' (Z.BinExpr op e1 e2) = do
-    curr <- get
-    let fresh = "temp_" ++ show (nextTemp curr)
-    let fresh1 = "temp_" ++ show (nextTemp curr + 1)
-    let fresh2 = "temp_" ++ show (nextTemp curr + 2)
-    modify $ \s -> s { nextTemp = nextTemp curr + 3 }
+    fresh <- freshTemp
+    fresh1 <- freshTemp
+    fresh2 <- freshTemp
     e1' <- makePlain' e1
     e2' <- makePlain' e2
     modify $ \s -> s { stmts = Asgn fresh1 (Plain e1') : Decl fresh1 : stmts s }
     modify $ \s -> s { stmts = Asgn fresh2 (Plain e2') : Decl fresh2 : stmts s }
     modify $ \s -> s { stmts = Asgn fresh (BinExpr op (Ident fresh1) (Ident fresh2)) : Decl fresh : stmts s }
     return $ Ident fresh
+
+freshTemp :: CodeGen String
+freshTemp = do
+    curr <- gets nextTemp
+    modify $ \s -> s { nextTemp = curr + 1 }
+    return $ freshPrefix ++ show curr
+
+freshPrefix :: String
+freshPrefix = "."

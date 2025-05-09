@@ -16,6 +16,7 @@ jobP =
   Job
     <$> argument str (metavar "INPUT" <> help "Input file to process")
     <*> argument str (metavar "OUTPUT" <> help "Name for the output file")
+    <*> switch (long "const-prop" <> help "Enable constant propagation")
 
 jobParser :: ParserInfo Job
 jobParser =

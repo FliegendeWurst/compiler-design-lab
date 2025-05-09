@@ -22,6 +22,7 @@ import Compile.Stage.A.X (fromXToA)
 data Job = Job
   { src :: FilePath
   , out :: FilePath
+  , constProp :: Bool
   } deriving (Show)
 
 compile :: Job -> L1ExceptT ()
@@ -32,7 +33,7 @@ compile job = do
   let y = fromZToY z
   let x = fromYToX y
   -- liftIO $ print x
-  let a = fromXToA x
+  let a = fromXToA x (constProp job)
   -- let aFile = out job ++ ".a"
   -- liftIO $ writeFile aFile (unlines $ concatMap (\x -> (map (\y -> show y) (body x))) a)
   let code = assemble a

@@ -37,16 +37,19 @@ data CodeGenState = CodeGenState
   , nextStackSlot :: Integer
   , nextExpr :: Integer
   , code :: [Inst]
+  , constPropagation :: Bool
+  , maxStackUse :: Integer
   }
   deriving (Show)
 
-fromXToA :: X -> A
-fromXToA = map function'
+fromXToA :: X -> Bool -> A
+fromXToA funs constProp = map (`function'` constProp) funs
 
-function' :: X.Function -> Function
-function' (X.Function name stmts) = A.Function name 10000 $ code (execState (genBlock stmts) initialState)
-  where
-    initialState = CodeGenState Map.empty Set.empty Set.empty 0 0 []
+function' :: X.Function -> Bool -> Function
+function' (X.Function name stmts) constProp = do
+  let initialState = CodeGenState Map.empty Set.empty Set.empty 0 0 [] constProp 0
+  let r = execState (genBlock stmts) initialState
+  A.Function name (maxStackUse r) $ code r
 
 regsToAllocate :: [Register]
 regsToAllocate = [1,2,4,5,8,9,10,11,12,13,14,15]
@@ -74,7 +77,7 @@ spillSomeRegs = do
 
 spillReg :: Register -> CodeGen RegOrMem
 spillReg x = do
-  ss <- getFreeStackSlot 
+  ss <- getFreeStackSlot
   emit $ Mov (Mem ss) (Reg x)
   return $ Mem ss
 
@@ -84,12 +87,12 @@ getFreeStackSlot = do
   case Set.lookupMin free of
     Nothing -> do
       ss <- gets nextStackSlot
-      modify $ \s -> s {nextStackSlot = ss + 1}
+      modify $ \s -> s { nextStackSlot = ss + 1 }
+      modify $ \s -> s { maxStackUse = max (maxStackUse s) (nextStackSlot s) }
       return ss
     Just it -> do
       modify $ \s -> s { freeStackSlots = Set.delete it free }
       return it
-    
 
 freshReg :: CodeGen Register
 freshReg = do
@@ -205,8 +208,9 @@ genStmt (Asgn name (Plain (Lit n))) = do
 genStmt (Asgn name (Plain (Ident n))) = do
   emit $ Comment $ "asgn " ++ show name ++ " = " ++ show n
   rhs <- reloadVar n
-  case rhs of
-    Imm i -> assignVar name $ Imm i
+  constP <- gets constPropagation
+  case (constP, rhs) of
+    (True, Imm i) -> assignVar name $ Imm i
     _ -> do
       lhs <- reloadVarForWrite name
       emit $ Mov (Reg lhs) rhs
@@ -225,8 +229,9 @@ genStmt (Asgn name (BinExpr op e1 e2)) = do
   emit $ Comment $ "asgn to binary op " ++ show name ++ " = " ++ show op ++ " " ++ show e1 ++ " " ++ show e2
   r1 <- genPlainExpr e1
   r2 <- genPlainExpr e2
-  case (r1, r2, op) of
-    (Imm i1, Imm i2, o) | (o /= Z.Div && o /= Z.Mod) || i2 > 0 || i2 < -1 -> do
+  constP <- gets constPropagation
+  case (constP, r1, r2, op) of
+    (True, Imm i1, Imm i2, o) | (o /= Z.Div && o /= Z.Mod) || i2 > 0 || i2 < -1 -> do
       case op of
         Z.Add -> do
           assignVar name (Imm $ i1 + i2)
