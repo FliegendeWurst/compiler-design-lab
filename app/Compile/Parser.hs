@@ -58,7 +58,7 @@ declInit = do
   pos <- getSourcePos
   reserved "int"
   name <- identifier
-  reserved "="
+  void $ symbol "="
   e <- expr
   return $ Init name e pos
 
@@ -215,7 +215,7 @@ identLetter :: Parser Char
 identLetter = alphaNumChar <|> char '_'
 
 identifier :: Parser String
-identifier = (lexeme . try) (p >>= check)
+identifier = (lexeme . try) (p >>= check) <|> parens identifier
   where
     p = (:) <$> identStart <*> many identLetter
     check x =
