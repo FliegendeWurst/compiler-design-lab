@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Compile.Parser
   ( parseAST
   ) where
@@ -8,20 +10,26 @@ import           Error (L1ExceptT, parserFail)
 import           Control.Monad.Combinators.Expr
 import           Control.Monad.IO.Class (liftIO)
 import           Data.Functor (void)
+import Data.Text (Text)
 import           Data.Void (Void)
 
 import           Text.Megaparsec
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
+import qualified Data.ByteString
+import Data.Text.Encoding (decodeUtf8')
 
 parseAST :: FilePath -> L1ExceptT AST
 parseAST path = do
-  text <- liftIO $ readFile path
-  case parse astParser path text of
-    Left err -> parserFail $ errorBundlePretty err
-    Right ast -> return ast
+  text <- liftIO $ Data.ByteString.readFile path
+  case decodeUtf8' text of
+    Left err -> parserFail $ show err
+    Right decoded ->
+      case parse astParser path decoded of
+        Left err -> parserFail $ errorBundlePretty err
+        Right ast -> return ast
 
-type Parser = Parsec Void String
+type Parser = Parsec Void Text
 
 astParser :: Parser AST
 astParser = do
@@ -133,7 +141,7 @@ sc = L.space space1 lineComment blockComment
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
 
-symbol :: String -> Parser String
+symbol :: Text -> Parser Text
 symbol = L.symbol sc
 
 parens :: Parser a -> Parser a
@@ -150,9 +158,12 @@ number = try hexadecimal <|> decimal <|> decimal0 <?> "number"
 
 decimal :: Parser HexOrDecInteger
 decimal = do
-  void $ lookAhead $ oneOf "123456789"
+  void $ lookAhead $ oneOf digits1
   val <- lexeme L.decimal
   return $ Dec val
+
+digits1 :: [Char]
+digits1 = "123456789"
 
 decimal0 :: Parser HexOrDecInteger
 decimal0 = do
@@ -169,7 +180,7 @@ hexadecimal = do
   --if val > 0xffffffff then fail "integer out of bounds" else pure val
   return $ Hex val
 
-reserved :: String -> Parser ()
+reserved :: Text -> Parser ()
 reserved w = void (lexeme $ try (string w <* notFollowedBy identLetter))
 
 reservedWords :: [String]
@@ -199,20 +210,26 @@ reservedWords =
 
 -- Operations
 opStart :: Parser Char
-opStart = oneOf "=+-*/%&^|<>!~"
+opStart = oneOf [ '=', '+', '-', '*', '/', '%', '&', '^', '|', '<', '>', '!', '~' ]
 
 opLetter :: Parser Char
-opLetter = oneOf "=&|<>"
+opLetter = oneOf [ '=', '&', '|', '<', '>' ]
 
 operator :: Parser String
 operator = lexeme ((:) <$> opStart <*> many opLetter)
 
 -- Identifiers
 identStart :: Parser Char
-identStart = letterChar <|> char '_'
+identStart = oneOf alpha <|> char '_'
 
 identLetter :: Parser Char
-identLetter = alphaNumChar <|> char '_'
+identLetter = oneOf alphaNums <|> char '_'
+
+alpha :: [Char]
+alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+alphaNums :: [Char]
+alphaNums = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 identifier :: Parser String
 identifier = (lexeme . try) (p >>= check) <|> parens identifier
