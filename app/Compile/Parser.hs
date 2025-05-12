@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Compile.Parser
   ( parseAST
@@ -133,10 +134,13 @@ expr = try (makeExprParser expr' opTable) <?> "expression"
 
 -- Lexer starts here, probably worth moving to its own file at some point
 sc :: Parser ()
-sc = L.space space1 lineComment blockComment
+sc = L.space mySpace lineComment blockComment
   where
     lineComment = L.skipLineComment "//"
     blockComment = L.skipBlockCommentNested "/*" "*/"
+
+mySpace :: (MonadParsec e s m, Token s ~ Char) => m ()
+mySpace = void $ some (oneOf ['\t', '\r', '\n', ' '])
 
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
@@ -174,7 +178,7 @@ decimal0 = do
 hexadecimal :: Parser HexOrDecInteger
 hexadecimal = do
   void $ char '0'
-  void $ char 'x'
+  void $ oneOf ['x','X']
   val <- lexeme L.hexadecimal
   --if val > 2^(31 :: Integer) then fail "integer out of bounds" else pure val
   --if val > 0xffffffff then fail "integer out of bounds" else pure val
