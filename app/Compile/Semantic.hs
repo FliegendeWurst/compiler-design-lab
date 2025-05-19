@@ -12,7 +12,7 @@ import qualified Data.Map as Map
 data VariableStatus
   = Declared
   | Initialized
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- You might want to keep track of some location information as well at some point
 type Namespace = Map.Map String VariableStatus
@@ -54,11 +54,22 @@ checkStmt (Init name e pos) = do
     $ "Variable " ++ name ++ " redeclared (initialized) at: " ++ posPretty pos
   checkExpr e
   put $ Map.insert name Initialized ns
-checkStmt (Asgn name _ e pos) = do
+checkStmt (Asgn name Nothing e pos) = do
   ns <- get
   unless (Map.member name ns)
     $ semanticFail'
     $ "Trying to assign to undeclared variable "
+        ++ name
+        ++ " at: "
+        ++ posPretty pos
+  checkExpr e
+  put $ Map.insert name Initialized ns
+checkStmt (Asgn name (Just _) e pos) = do
+  ns <- get
+  let isDeclared = Map.lookup name ns
+  when (isDeclared /= Just Initialized)
+    $ semanticFail'
+    $ "Trying to op-assign to uninitialized variable "
         ++ name
         ++ " at: "
         ++ posPretty pos
