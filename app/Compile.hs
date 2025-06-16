@@ -33,8 +33,10 @@ compile job = do
   semanticAnalysis ast
   let z = fromASTToZ ast
   liftIO $ print "Z-IR lowering done.."
+  liftIO $ print z
   let y = fromZToY z
   liftIO $ print "Y-IR lowering done.."
+  liftIO $ print y
   let x = fromYToX y
   liftIO $ print "X-IR lowering done.."
   liftIO $ print x

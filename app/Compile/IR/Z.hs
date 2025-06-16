@@ -18,9 +18,10 @@ import Util (expect)
 type Z = [Function]
 
 data Function = Function
-    { name :: String
-    , code :: [Stmt]
-    }
+  { name :: String
+  , code :: [Stmt]
+  }
+  deriving (Show)
 
 data Stmt
   = Simple Simp
@@ -32,11 +33,13 @@ data Stmt
   | Break
   | Ret Expr
   | Block [Stmt]
+  deriving (Show) -- TODO
 
 data Simp
   = Decl ExprType String
   | Init ExprType String Expr
   | Asgn String AsgnOp Expr
+  deriving (Show)
 
 data Expr
   = Lit Int32
@@ -44,6 +47,7 @@ data Expr
   | Ident String
   | UnExpr UnOp Expr
   | BinExpr BinOp Expr Expr
+  deriving (Show)
 
 typeExpr :: Map String ExprType -> Expr -> ExprType
 typeExpr _ (Lit _) = IntT

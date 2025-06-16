@@ -163,13 +163,11 @@ lookupVar name = do
   m <- gets regMap
   case Map.lookup name m of
     Just r -> return r
-    Nothing -> error $ "unreachable, fix your semantic analysis I guess " ++ name ++ " map = " ++ show m
-
-    --Nothing -> do
-    --  m2 <- gets varStore
-    --  case Map.lookup name m2 of
-    --    Just r -> return r
-    --    Nothing -> error $ "unreachable, fix your semantic analysis I guess " ++ name ++ " map = " ++ show m
+    Nothing -> do
+      m2 <- gets varStore
+      case Map.lookup name m2 of
+        Just r -> return r
+        Nothing -> error $ "unreachable, fix your semantic analysis I guess " ++ name ++ " map = " ++ show m
 
 reloadVar :: VarName -> CodeGen RegOrMem
 reloadVar name = do
@@ -189,16 +187,34 @@ reloadVar name = do
       --modify $ \s -> s {regMap = Map.insert name (Reg newReg) (regMap s)}
       --modify $ \s -> s { usedRegs = Set.insert newReg (usedRegs s) }
       --return newReg
-    Nothing -> error $ "failed to reload var " ++ name
+    Nothing -> do
+      m2 <- gets varStore
+      let realLoc = expect ("failed to reload stored variable " ++ name ++ " in " ++ show m2 ++ " or normal map " ++ show m) $ Map.lookup name m2
+      modify $ \s -> s { regMap = Map.insert name realLoc (regMap s) }
+      reloadVar name
 
 discardVar :: VarName -> CodeGen ()
 discardVar name = do
   m <- gets regMap
-  case Map.lookup name m of
+  let loc = expect "impossible?" $ Map.lookup name m
+  m2 <- gets varStore
+  let locPermanent = Map.lookup name m2
+  case locPermanent of
+    Nothing -> do
+      newLoc <- spillReg loc
+      modify $ \s -> s { varStore = Map.insert name newLoc (varStore s) }
+      modify $ \s -> s { regMap = Map.insert name newLoc (regMap s) }
+    Just mem -> do
+      when (loc /= mem) $ do
+        emit $ Mov mem loc
+  m' <- gets regMap
+  let loc' = Map.lookup name m'
+  case loc' of
     Just (Reg r) -> do
       modify $ \s -> s { usedRegs = Set.delete r (usedRegs s) }
-    Just (Mem x) -> do
-      modify $ \s -> s { freeStackSlots = Set.insert x (freeStackSlots s) }
+    Just (Mem _) -> do
+      -- modify $ \s -> s { freeStackSlots = Set.insert x (freeStackSlots s) }
+      pure () -- permanently stored
     Just (Imm _) -> return ()
     Nothing -> return () -- odd
   modify $ \s -> s { regMap = Map.delete name m }
@@ -266,6 +282,7 @@ genStmt (If cond ifB elseB) = do
   emit $ Jne elseL
   genStmt ifB
   spillSomeRegs
+  emit $ Comment "jump after if"
   emit $ Jump commonL
   emit $ Lbl elseL
   genStmt elseB
@@ -278,20 +295,24 @@ genStmt (For init body) = do
   breakL <- freshLabel
   pushLoop bodyL continueL breakL
   forM_ init genStmt
+  spillSomeRegs
   emit $ Lbl bodyL
   forM_ body genStmt
   emit $ Lbl breakL
   popLoop
 genStmt ForStepLabel = do
+  spillSomeRegs
   lbls <- peekLoop
   emit $ Lbl (snd3 lbls)
 genStmt Continue = do
   spillSomeRegs
   lbls <- peekLoop
-  emit $ Jump (fst3 lbls)
+  emit $ Comment "continue"
+  emit $ Jump (fst3 lbls) -- remember, this continue is only issued after the step check
 genStmt Break = do
   spillSomeRegs
   lbls <- peekLoop
+  emit $ Comment "break"
   emit $ Jump (thd3 lbls)
 genStmt (Block inner) = do
   forM_ inner genStmt
@@ -395,38 +416,38 @@ genStmt (Asgn name (BinExpr op e1 e2)) = do
           emit $ A.Div r2InRegister
           emit $ Mov r edx
         Z.IntGe -> do
-          emit $ Zero edx
-          emit $ Mov r (Imm 1)
+          emit $ Zero r
+          emit $ Mov edx (Imm 1)
           reloadInto eax' r1
           emit $ Cmp eax r2
-          emit $ CmovGe r eax
+          emit $ CmovGe r edx
         Z.IntGt -> do
-          emit $ Zero edx
-          emit $ Mov r (Imm 1)
+          emit $ Zero r
+          emit $ Mov edx (Imm 1)
           reloadInto eax' r1
           emit $ Cmp eax r2
           emit $ CmovGt r edx
         Z.IntLe -> do
-          emit $ Zero edx
-          emit $ Mov r (Imm 1)
+          emit $ Zero r
+          emit $ Mov edx (Imm 1)
           reloadInto eax' r1
           emit $ Cmp eax r2
-          emit $ CmovLe r eax
+          emit $ CmovLe r edx
         Z.IntLt -> do
-          emit $ Zero edx
-          emit $ Mov r (Imm 1)
+          emit $ Zero r
+          emit $ Mov edx (Imm 1)
           reloadInto eax' r1
           emit $ Cmp eax r2
           emit $ CmovLt r edx
         Z.Equals -> do
-          emit $ Zero edx
-          emit $ Mov r (Imm 1)
+          emit $ Zero r
+          emit $ Mov edx (Imm 1)
           reloadInto eax' r1
           emit $ Cmp eax r2
           emit $ CmovE r edx
         Z.EqualsNot -> do
-          emit $ Zero edx
-          emit $ Mov r (Imm 1)
+          emit $ Zero r
+          emit $ Mov edx (Imm 1)
           reloadInto eax' r1
           emit $ Cmp eax r2
           emit $ CmovNe r edx

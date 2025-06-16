@@ -221,9 +221,9 @@ opTable =
   , [ InfixL (BinExpr LeftShift <$ symbol "<<")
     , InfixL (BinExpr RightShift <$ symbol ">>")
     ]
-  , [ InfixL (BinExpr IntLt <$ symbol "<")
+  , [ InfixL (BinExpr IntLt <$ symbol' "<")
     , InfixL (BinExpr IntLe <$ symbol "<=")
-    , InfixL (BinExpr IntGt <$ symbol ">")
+    , InfixL (BinExpr IntGt <$ symbol' ">")
     , InfixL (BinExpr IntGe <$ symbol ">=")
     ]
   , [ InfixL (BinExpr Equals <$ symbol "==")

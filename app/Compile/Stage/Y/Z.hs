@@ -25,19 +25,17 @@ data CodeGenState = CodeGenState
 push :: Stmt -> CodeGen ()
 push stmt = do
   case stmt of
-    Decl t name -> do
-      modify $ \s -> s { typs = Map.insert name t (typs s) }
+    Decl t name -> modify $ \s -> s { typs = Map.insert name t (typs s) }
     _ -> pure ()
   modify $ \s -> s { stmts = stmt : stmts s }
 
 pushScope :: CodeGen ()
-pushScope = do
-  modify $ \s -> s {
-    stmts = [],
-    parentScopes = stmts s : parentScopes s,
-    typs = Map.empty,
-    parentTyps = typs s : parentTyps s
-  }
+pushScope = modify $ \s -> s {
+  stmts = [],
+  parentScopes = stmts s : parentScopes s,
+  typs = Map.empty,
+  parentTyps = typs s : parentTyps s
+}
 
 popScope :: CodeGen [Stmt]
 popScope = do
@@ -57,6 +55,18 @@ peekScope = do
     stmts = []
   }
   return ss
+
+typs' :: CodeGen (Map String ExprType)
+typs' = do
+  localTyps <- gets typs
+  parent' <- gets parentTyps
+  return $ typs'' (localTyps:parent')
+
+typs'' :: [Map String ExprType] -> Map String ExprType
+typs'' [] = Map.empty
+typs'' [x] = x
+typs'' (x:xs) = Map.union x $ typs'' xs
+
 
 fromZToY :: Z -> Y
 fromZToY = map function'
@@ -123,8 +133,7 @@ stmt' (Z.For init cond step body) = do
   push $ For (reverse init') (reverse body') (Plain $ Ident condV)
 stmt' Z.Continue = push Continue
 stmt' Z.Break = push Break
-stmt' (Z.Block stmtsB) = do
-  mapM_ stmt' stmtsB
+stmt' (Z.Block stmtsB) = mapM_ stmt' stmtsB
 stmt' (Z.Ret e) = do
     e' <- makePlain' e
     modify $ \s -> s { stmts = Ret e' : stmts s }
@@ -149,12 +158,12 @@ makePlain' (Z.Ident name) = return $ Ident name
 makePlain' (Z.UnExpr op e) = do
     fresh <- freshTemp
     e' <- expr' (Z.UnExpr op e)
-    ctx <- gets typs
+    ctx <- typs'
     let t' = typeExpr ctx (Z.UnExpr op e)
     modify $ \s -> s { stmts = Asgn fresh e' : Decl t' fresh : stmts s }
     return $ Ident fresh
 makePlain' (Z.BinExpr Z.Ternary1 cond (Z.BinExpr Z.Ternary2 e1 e2)) = do
-  ctx <- gets typs
+  ctx <- typs'
 
   condV <- freshTemp
   resV <- freshTemp
@@ -173,7 +182,7 @@ makePlain' (Z.BinExpr op e1 e2) = do
     fresh2 <- freshTemp
     e1' <- makePlain' e1
     e2' <- makePlain' e2
-    ctx <- gets typs
+    ctx <- typs'
     let t1' = typeExpr ctx e1
     let t2' = typeExpr ctx e2
     let t' = typeExpr ctx (Z.BinExpr op e1 e2)
