@@ -7,9 +7,13 @@ module Compile.IR.Z
     , AsgnOp
     , BinOp(..)
     , UnOp(..)
+    , typeExpr
     ) where
 import Data.Int (Int32)
-import Compile.AST (ExprType)
+import Compile.AST (ExprType (..))
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Util (unwrap)
 
 type Z = [Function]
 
@@ -21,9 +25,7 @@ data Function = Function
 data Stmt
   = Simple Simp
   -- Condition, if, else
-  | If Expr Stmt (Maybe Stmt)
-  -- Condition, Body
-  | While Expr Stmt
+  | If Expr Stmt Stmt
   -- Initializer, Condition, Step, Body
   | For (Maybe Simp) Expr (Maybe Simp) Stmt
   | Continue
@@ -42,6 +44,23 @@ data Expr
   | Ident String
   | UnExpr UnOp Expr
   | BinExpr BinOp Expr Expr
+
+typeExpr :: Map String ExprType -> Expr -> ExprType
+typeExpr _ (Lit _) = IntT
+typeExpr _ (LitB _) = BoolT
+typeExpr ctx (Ident ident) = unwrap $ Map.lookup ident ctx
+typeExpr ctx (UnExpr _ e) = typeExpr ctx e
+typeExpr _ (BinExpr LogicalAnd _ _) = BoolT
+typeExpr _ (BinExpr LogicalOr _ _) = BoolT
+typeExpr _ (BinExpr IntLt _ _) = BoolT
+typeExpr _ (BinExpr IntLe _ _) = BoolT
+typeExpr _ (BinExpr IntGt _ _) = BoolT
+typeExpr _ (BinExpr IntGe _ _) = BoolT
+typeExpr _ (BinExpr Equals _ _) = BoolT
+typeExpr _ (BinExpr EqualsNot _ _) = BoolT
+typeExpr _ctx (BinExpr Ternary1 _ _) = error "ternary type" -- FIXME
+typeExpr _ctx (BinExpr Ternary2 _ _) = error "ternary type" -- FIXME
+typeExpr _ (BinExpr {}) = IntT
 
 -- Nothing means =, Just is for +=, %=, ...
 type AsgnOp = Maybe BinOp

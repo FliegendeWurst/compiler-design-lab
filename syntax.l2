@@ -1,4 +1,7 @@
 int main() {
+  return 5;
+
+}/*
   int result;
   int a;
 
@@ -99,3 +102,5 @@ int main() {
   }
   // Test: control flow analysis
 }
+
+*/

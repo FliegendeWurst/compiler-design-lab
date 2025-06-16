@@ -196,8 +196,8 @@ genBlock :: [Stmt] -> CodeGen ()
 genBlock = mapM_ genStmt
 
 genStmt :: Stmt -> CodeGen ()
-genStmt (Decl name) = do
-  emit $ Comment $ "decl " ++ show name
+genStmt (Decl t name) = do
+  emit $ Comment $ "decl " ++ show name ++ " typ " ++ show t
   r <- freshReg
   assignVar name $ Reg r
 genStmt (X.Discard name) = do

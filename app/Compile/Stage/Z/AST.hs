@@ -22,9 +22,8 @@ function' name stmts = Function name (map stmt' stmts)
 
 stmt' :: AST.Stmt -> Stmt
 stmt' (AST.Simple s) = Simple $ simp' s
-stmt' (AST.Control (AST.If cond ifB (Just elseB))) = If (expr' cond) (stmt' ifB) $ Just (stmt' elseB)
-stmt' (AST.Control (AST.If cond ifB Nothing)) = If (expr' cond) (stmt' ifB) Nothing
-stmt' (AST.Control (AST.While cond body)) = While (expr' cond) $ stmt' body
+stmt' (AST.Control (AST.If cond ifB elseB)) = If (expr' cond) (stmt' ifB) $ (stmt' elseB)
+stmt' (AST.Control (AST.While cond body)) = For Nothing (expr' cond) Nothing $ stmt' body
 stmt' (AST.Control (AST.For init cond step body)) = For (fmap simp' init) (expr' cond) (fmap simp' step) $ stmt' body
 stmt' (AST.Control AST.Continue) = Continue
 stmt' (AST.Control AST.Break) = Break

@@ -34,7 +34,7 @@ data Simp
 
 data Ctrl
   -- Condition, if, else
-  = If Expr Stmt (Maybe Stmt)
+  = If Expr Stmt Stmt
   -- Condition, Body
   | While Expr Stmt
   -- Initializer, Condition, Step, Body

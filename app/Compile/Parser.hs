@@ -47,10 +47,29 @@ astParser = do
   return ast
 
 stmt :: Parser Stmt
-stmt = do
+stmt = stmtSimple <|> stmtBlock <|> stmtIf
+
+stmtSimple :: Parser Stmt
+stmtSimple = do
   s <- decl <|> simp <|> ret
   semi
   return s
+
+stmtBlock :: Parser Stmt
+stmtBlock = do
+  inner <- braces $ many stmt
+  return $ Block inner
+
+stmtIf :: Parser Stmt
+stmtIf = do
+  reserved "if"
+  cond <- parens expr
+  ifB <- stmt
+  elseB <- try stmt <|> emptyStmt
+  return $ Control $ If cond ifB elseB
+
+emptyStmt :: Parser Stmt
+emptyStmt = return $ Block []
 
 decl :: Parser Stmt
 decl = try declInit <|> declNoInit

@@ -149,12 +149,9 @@ checkStmt (Control (If cond ifB elseB)) = do
   pushScope
   checkStmt ifB
   popScope
-  case elseB of
-    Just elseStmt -> do
-      pushScope
-      checkStmt elseStmt
-      popScope
-    Nothing -> pure ()
+  pushScope
+  checkStmt elseB
+  popScope
 checkStmt (Control (While cond body)) = do
   checkExpr cond BoolT
   pushScope
@@ -236,20 +233,20 @@ checkExpr (BinExpr op lhs rhs) t = do
   let boolBoolToBool = opIsBoolBoolToBool op
   case t of
     IntT -> do
-      unless (intIntToInt) $ semanticFail' "expected integer operator"
+      unless intIntToInt $ semanticFail' "expected integer operator"
       checkExpr lhs IntT
       checkExpr rhs IntT
     BoolT -> do
       x <- do
-        unless (intIntToBool) $ return False
-        checkExpr lhs IntT
-        checkExpr rhs IntT
-        return True
+        (if intIntToBool then (do
+          checkExpr lhs IntT
+          checkExpr rhs IntT
+          return True) else return False)
       y <- do
-        unless (boolBoolToBool) $ return False
-        checkExpr lhs BoolT
-        checkExpr rhs BoolT
-        return True
+        (if boolBoolToBool then (do
+          checkExpr lhs BoolT
+          checkExpr rhs BoolT
+          return True) else return False)
       unless (x || y) $ semanticFail' "expected operator that produces boolean"
   -- FIXME: ternary
 
@@ -264,5 +261,6 @@ checkReturns (Function stmts _) = do
 
 isReturn :: Stmt -> Bool
 isReturn (Control (Ret _ _)) = True
-isReturn (Control (If _ ifB (Just elseB))) = isReturn ifB && isReturn elseB
+isReturn (Control (If _ ifB elseB)) = isReturn ifB && isReturn elseB
+isReturn (Block ss) = any isReturn ss
 isReturn _ = False

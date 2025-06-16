@@ -9,6 +9,7 @@ import qualified Compile.IR.Y as Y
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Compile.IR.X as X
+import Prelude hiding (init)
 
 type CodeGen a = State CodeGenState a
 
@@ -35,13 +36,24 @@ flipTuple :: (a, b) -> (b, [a])
 flipTuple (a, b) = (b, [a])
 
 stmt' :: (Y.Stmt, Integer) -> CodeGen ()
-stmt' (Y.Decl name, idx) = do
+stmt' (Y.Decl _ name, idx) = do
     registerLast name idx
 stmt' (Y.Asgn name e, idx) = do
     registerLast name idx
     registerExpr e idx
 stmt' (Y.Ret e, idx) = do
     registerExpr (Plain e) idx
+stmt' (Y.If cond ifB elseB, idx) = do
+  -- FIXME
+  return $ error "If to X"
+stmt' (Y.For init body, idx) = do
+  -- FIXME
+  return $ error "For to X"
+stmt' (Y.Continue, idx) = pure () -- ?
+stmt' (Y.Break, idx) = pure () -- ?
+stmt' (Y.Block ss, idx) = do
+  -- FIXME
+  return $ error "block to X"
 
 doStmt' :: Map Integer [String] -> (Y.Stmt, Integer) -> CodeGen ()
 doStmt' indexed (stmt, idx) = do
@@ -56,9 +68,14 @@ addDropStmt x =
     modify $ \s -> s { stmts = Discard x : stmts s }
 
 stmtIdentity :: Y.Stmt -> Stmt
-stmtIdentity (Y.Decl x) = Decl x
+stmtIdentity (Y.Decl t x) = Decl t x
 stmtIdentity (Y.Asgn name e) = Asgn name e
 stmtIdentity (Y.Ret e) = Ret e
+stmtIdentity (Y.If cond ifB elseB) = If cond (stmtIdentity ifB) (stmtIdentity elseB)
+stmtIdentity (Y.For init body) = For (map stmtIdentity init) $ map stmtIdentity body
+stmtIdentity Y.Continue = Continue
+stmtIdentity Y.Break = Break
+stmtIdentity (Y.Block ss) = Block $ map stmtIdentity ss
 
 registerLast :: String -> Integer -> CodeGen ()
 registerLast name idx = do
@@ -68,8 +85,10 @@ registerExpr :: Expr -> Integer -> CodeGen ()
 registerExpr e idx = do
     case e of
         Plain (Lit _) -> return ()
+        Plain (LitB _) -> return ()
         Plain (Ident x) -> registerLast x idx
         UnExpr _ (Lit _) -> return ()
+        UnExpr _ (LitB _) -> return ()
         UnExpr _ (Ident x) -> registerLast x idx
         BinExpr _ e1 e2 -> do
             case e1 of
