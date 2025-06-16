@@ -27,11 +27,13 @@ data Function = Function
 
 data Inst
   = Mov RegOrMem RegOrMem
+  | Xor RegOrMem RegOrMem
   | Add RegOrMem RegOrMem
   | Sub RegOrMem RegOrMem
   | Mul RegOrMem RegOrMem
   | Div RegOrMem
   | Neg RegOrMem
+  | Not RegOrMem
   | Cdq
   | Leave
   | Return

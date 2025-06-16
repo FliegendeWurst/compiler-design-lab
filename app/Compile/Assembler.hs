@@ -27,11 +27,13 @@ inst' :: Inst -> String
 inst' (Mov dest src) | dest == xmm0 = "movd " ++ loc' xmm0 ++ ", " ++ loc' src
 inst' (Mov dest src) | src == xmm0 = "movd " ++ loc' dest ++ ", " ++ loc' xmm0
 inst' (Mov dest src) = "mov " ++ loc' dest ++ ", " ++ loc' src
+inst' (Xor dest src) = "xor " ++ loc' dest ++ ", " ++ loc' src
 inst' (Add dest src) = "add " ++ loc' dest ++ ", " ++ loc' src
 inst' (Sub dest src) = "sub " ++ loc' dest ++ ", " ++ loc' src
 inst' (Mul dest (Imm val)) = "imul " ++ loc' dest ++ ", " ++ loc' dest ++ ", " ++ loc' (Imm val)
 inst' (Mul dest src) = "imul " ++ loc' dest ++ ", " ++ loc' src
 inst' (Div src) = "idiv " ++ loc' src
+inst' (Not dest) = "not " ++ loc' dest
 inst' (Neg dest) = "neg " ++ loc' dest
 inst' Cdq = "cdq"
 inst' Leave = "leave"

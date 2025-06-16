@@ -40,7 +40,6 @@ compile job = do
   liftIO $ print x
   let a = fromXToA x (constProp job)
   liftIO $ print "A-IR lowering done.."
-  liftIO $ print a
   -- let aFile = out job ++ ".a"
   -- liftIO $ writeFile aFile (unlines $ concatMap (\x -> (map (\y -> show y) (body x))) a)
   let code = assemble a

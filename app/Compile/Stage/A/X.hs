@@ -305,6 +305,9 @@ genStmt (X.Discard name) = do
 genStmt (Asgn name (Plain (Lit n))) = do
   emit $ Comment $ "asgn literal " ++ show name ++ " " ++ show n
   assignVar name $ Imm n
+genStmt (Asgn name (Plain (LitB n))) = do
+  emit $ Comment $ "asgn literal B " ++ show name ++ " " ++ show n
+  assignVar name $ Imm (boolToInt n)
 genStmt (Asgn name (Plain (Ident n))) = do
   emit $ Comment $ "asgn " ++ show name ++ " = " ++ show n
   rhs <- reloadVar n
@@ -317,14 +320,21 @@ genStmt (Asgn name (Plain (Ident n))) = do
 genStmt (Asgn name (UnExpr op (Lit n))) = do
   emit $ Comment $ "asgn to unary op " ++ show name ++ " = " ++ show op ++ show n
   assignVar name (Imm $ -n)
+genStmt (Asgn name (UnExpr op (LitB n))) = do
+  emit $ Comment $ "asgn to unary op " ++ show name ++ " = " ++ show op ++ show n
+  assignVar name (Imm $ (boolToInt $ not n))
 genStmt (Asgn name (UnExpr op (Ident n))) = do
   emit $ Comment $ "asgn to unary op " ++ show name ++ " = " ++ show op ++ show n
   rhs <- reloadVar n
   r <- reloadVarForWrite name
-  void $ case op of
-    Z.Neg -> return ()
   emit $ Mov (Reg r) rhs
-  emit $ A.Neg (Reg r)
+  void $ case op of
+    Z.Neg -> do
+      emit $ A.Neg (Reg r)
+    Z.LogicalNot -> do
+      emit $ A.Xor (Reg r) (Imm 1)
+    Z.BitwiseNot -> do
+      emit $ A.Not (Reg r)
 genStmt (Asgn name (BinExpr op e1 e2)) = do
   emit $ Comment $ "asgn to binary op " ++ show name ++ " = " ++ show op ++ " " ++ show e1 ++ " " ++ show e2
   r1 <- genPlainExpr e1
@@ -343,7 +353,7 @@ genStmt (Asgn name (BinExpr op e1 e2)) = do
           assignVar name (Imm $ i1 `quot` i2)
         Z.Mod ->
           assignVar name (Imm $ i1 `rem` i2)
-        -- TODO: add remainder
+        _ -> error "TODO: const prop for more"
       return ()
     _ -> do
       reg <- reloadVarForWrite name
@@ -425,13 +435,14 @@ genStmt (X.Ret (Lit n)) = do
   emit $ Mov eax (Imm n)
   emit Leave
   emit Return
+genStmt (X.Ret (LitB _)) = error "tried to return boolean"
 genStmt (X.Ret (Ident n)) = do
   rhs <- reloadVar n
   emit $ Mov eax rhs
   emit Leave
   emit Return
-genStmt _ = return ()
 
 genPlainExpr :: Y.LitOrIdent -> CodeGen RegOrMem
 genPlainExpr (Lit n) = return $ Imm n
+genPlainExpr (LitB n) = return $ Imm (boolToInt n)
 genPlainExpr (Ident name) = lookupVar name

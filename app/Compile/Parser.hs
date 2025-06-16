@@ -184,10 +184,20 @@ boolLit2 = do
   reserved "false"
   return $ BoolLit False
 
+-- don't ask me why we need this special rule...
 unExpr :: Parser Expr
-unExpr = do
+unExpr = (do
   void $ symbol "-"
   UnExpr Neg <$> expr'
+  ) <|> (
+  do
+  void $ symbol "!"
+  UnExpr LogicalNot <$> expr'
+  ) <|> (
+  do
+  void $ symbol "~"
+  UnExpr BitwiseNot <$> expr'
+  )
 
 identExpr :: Parser Expr
 identExpr = do
