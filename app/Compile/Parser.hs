@@ -19,6 +19,8 @@ import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import qualified Data.ByteString
 import Data.Text.Encoding (decodeUtf8')
+import Prelude hiding (init)
+import Data.Maybe (isJust)
 
 parseAST :: FilePath -> L1ExceptT AST
 parseAST path = do
@@ -47,13 +49,17 @@ astParser = do
   return ast
 
 stmt :: Parser Stmt
-stmt = stmtSimple <|> stmtBlock <|> stmtIf
+stmt = (Simple <$> stmtSimple) <|> stmtRet <|> stmtBreak <|> stmtContinue <|> stmtBlock <|> stmtIf <|> stmtFor <|> stmtWhile
 
-stmtSimple :: Parser Stmt
+stmtSimple :: Parser Simp
 stmtSimple = do
-  s <- decl <|> simp <|> ret
+  s <- decl <|> simp
   semi
   return s
+
+stmtSimple' :: Parser Simp
+stmtSimple' = do
+  decl <|> simp
 
 stmtBlock :: Parser Stmt
 stmtBlock = do
@@ -65,38 +71,72 @@ stmtIf = do
   reserved "if"
   cond <- parens expr
   ifB <- stmt
-  elseB <- try stmt <|> emptyStmt
+  elseT <- optional $ reserved "else"
+  elseB <- (if isJust elseT then stmt else pure $ Block [])
   return $ Control $ If cond ifB elseB
+
+stmtFor :: Parser Stmt
+stmtFor = do
+  reserved "for"
+  (init, cond, step) <- parens $ do
+    init <- optional stmtSimple
+    case init of
+      Nothing -> do
+        semi
+      _ -> pure ()
+    cond <- expr
+    semi
+    step <- optional stmtSimple'
+    return (init, cond, step)
+  Control . For init cond step <$> stmt
+
+stmtWhile :: Parser Stmt
+stmtWhile = do
+  reserved "while"
+  cond <- parens expr
+  Control . While cond <$> stmt
+
+stmtBreak :: Parser Stmt
+stmtBreak = do
+  reserved "break"
+  semi
+  return $ Control Break
+
+stmtContinue :: Parser Stmt
+stmtContinue = do
+  reserved "continue"
+  semi
+  return $ Control Continue
 
 emptyStmt :: Parser Stmt
 emptyStmt = return $ Block []
 
-decl :: Parser Stmt
+decl :: Parser Simp
 decl = try declInit <|> declNoInit
 
-declNoInit :: Parser Stmt
+declNoInit :: Parser Simp
 declNoInit = do
   pos <- getSourcePos
-  t <- typ
+  t <- try typ
   name <- identifier
-  return $ Simple $ Decl t name pos
+  return $ Decl t name pos
 
-declInit :: Parser Stmt
+declInit :: Parser Simp
 declInit = do
   pos <- getSourcePos
-  t <- typ
+  t <- try typ
   name <- identifier
   void $ symbol "="
   e <- expr
-  return $ Simple $ Init t name e pos
+  return $ Init t name e pos
 
-simp :: Parser Stmt
+simp :: Parser Simp
 simp = do
   pos <- getSourcePos
   name <- identifier
   op <- asnOp
   e <- expr
-  return $ Simple $ Asgn name op e pos
+  return $ Asgn name op e pos
 
 asnOp :: Parser (Maybe Op)
 asnOp = do
@@ -116,11 +156,12 @@ asnOp = do
     x -> fail $ "Nonexistent assignment operator: " ++ x
   <?> "assignment operator"
 
-ret :: Parser Stmt
-ret = do
+stmtRet :: Parser Stmt
+stmtRet = do
   pos <- getSourcePos
   reserved "return"
   e <- expr
+  semi
   return $ Control $ Ret e pos
 
 expr' :: Parser Expr

@@ -2,15 +2,16 @@ module Compile.Semantic
   ( semanticAnalysis
   ) where
 
-import           Compile.AST (AST(..), Expr(..), Stmt(..), Simp(..), Ctrl(..), posPretty, HexOrDecInteger (..), intValue, ExprType (..), opIsIntIntToInt, opIsIntIntToBool, opIsBoolBoolToBool)
+import           Compile.AST (AST(..), Expr(..), Stmt(..), Simp(..), Ctrl(..), posPretty, HexOrDecInteger (..), intValue, ExprType (..), opIsIntIntToInt, opIsIntIntToBool, opIsBoolBoolToBool, typeExpr)
 import           Error (L1ExceptT, semanticFail)
 
-import           Control.Monad (unless, when)
+import           Control.Monad (unless, when, forM_)
 import           Control.Monad.State
 import qualified Data.Map as Map
 import Util (unwrap, headM)
 import Prelude hiding (init)
 import Data.Maybe (catMaybes, isNothing, isJust)
+import Data.Map (Map)
 
 data VariableStatus
   = Declared ExprType
@@ -74,6 +75,15 @@ isInitialized ns name =
       Just parentNs -> isInitialized parentNs name
       Nothing -> Nothing
 
+getTypeContext :: Namespace -> Map String ExprType
+getTypeContext ns =
+  Map.union thisT parentT
+  where
+    thisT = Map.map (\x -> case x of
+      Initialized typ -> typ
+      Declared typ -> typ) (scope ns)
+    parentT = maybe Map.empty getTypeContext (parent ns)
+
 makeDeclared :: String -> ExprType-> L1Semantic ()
 makeDeclared name typ = do
   modify $ \s -> s { scope = Map.insert name (Declared typ) (scope s) }
@@ -103,21 +113,41 @@ checkStmts (x:y) = do
   checkStmt x
   checkStmts y
 
+findDeclared :: Namespace -> Map String ExprType
+findDeclared ns =
+  Map.union thisT parentT
+  where
+    thisT = findDeclared' (scope ns)
+    parentT = maybe Map.empty findDeclared (parent ns)
+
+findDeclared' :: Map.Map String VariableStatus -> Map String ExprType
+findDeclared' = Map.foldrWithKey (\ nam status xs -> case status of
+    Declared typ -> Map.insert nam typ xs
+    _ -> xs
+    ) Map.empty
+
+findInitialized :: Map.Map String VariableStatus -> Map String ExprType
+findInitialized = Map.foldrWithKey (\ nam status xs -> case status of
+    Initialized typ -> Map.insert nam typ xs
+    _ -> xs
+    ) Map.empty
+
 -- So far this checks:
 -- + we cannot declare a variable again that has already been declared or initialized
 -- + we cannot initialize a variable again that has already been declared or initialized
 -- + a variable needs to be declared or initialized before we can assign to it
 -- + we can only return valid expressions
+-- (outdated)
 checkStmt :: Stmt -> L1Semantic ()
 checkStmt (Simple (Decl typ name pos)) = do
   ns <- get
-  when (isNothing (isDeclared ns name))
+  when (isJust (isDeclared ns name))
     $ semanticFail'
     $ "Variable " ++ name ++ " redeclared at: " ++ posPretty pos
   makeDeclared name typ
 checkStmt (Simple (Init typ name e pos)) = do
   ns <- get
-  when (isNothing (isDeclared ns name))
+  when (isJust (isDeclared ns name))
     $ semanticFail'
     $ "Variable " ++ name ++ " redeclared (initialized) at: " ++ posPretty pos
   checkExpr e typ
@@ -146,12 +176,24 @@ checkStmt (Simple (Asgn name (Just _) e pos)) = do
   makeInitialized name $ unwrap typ
 checkStmt (Control (If cond ifB elseB)) = do
   checkExpr cond BoolT
+  ns <- get
   pushScope
   checkStmt ifB
+  def1 <- gets scope
   popScope
   pushScope
   checkStmt elseB
+  def2 <- gets scope
   popScope
+  -- Important: merge commonly defined variables, and define them in parent scope!
+  let iP = findDeclared ns
+  let i1 = findInitialized def1
+  let i2 = findInitialized def2
+  let ic = Map.intersection i1 i2
+  let icc = Map.intersection ic iP
+  forM_ (Map.assocs icc) (\e -> do
+    uncurry makeInitialized e
+    )
 checkStmt (Control (While cond body)) = do
   checkExpr cond BoolT
   pushScope
@@ -186,9 +228,17 @@ checkStmt (Control Break) = do
     $ semanticFail' "break not in loop"
 checkStmt (Control (Ret e _)) = checkExpr e IntT
 checkStmt (Block body) = do
+  ns <- get
   pushScope
   checkStmts body
+  def <- gets scope
   popScope
+  let iP = findDeclared ns
+  let i1 = findInitialized def
+  let icc = Map.intersection i1 iP
+  forM_ (Map.assocs icc) (\e -> do
+    uncurry makeInitialized e
+    )
 
 --checkExprOpt :: Maybe Expr -> L1Semantic ()
 --checkExprOpt (Just x) = checkExpr x
@@ -228,26 +278,23 @@ checkExpr (UnExpr _ e) t = checkExpr e t
 -- bool · bool → bool
 -- AND THE STUPID TERNARY!!!
 checkExpr (BinExpr op lhs rhs) t = do
+  ns <- get
+  let ts = getTypeContext ns
   let intIntToInt = opIsIntIntToInt op
-  let intIntToBool = opIsIntIntToBool op
-  let boolBoolToBool = opIsBoolBoolToBool op
   case t of
     IntT -> do
       unless intIntToInt $ semanticFail' "expected integer operator"
       checkExpr lhs IntT
       checkExpr rhs IntT
     BoolT -> do
-      x <- do
-        (if intIntToBool then (do
+      do
+        when (typeExpr ts lhs == IntT) $ do
           checkExpr lhs IntT
           checkExpr rhs IntT
-          return True) else return False)
-      y <- do
-        (if boolBoolToBool then (do
+      do
+        when (typeExpr ts lhs == BoolT) $ do
           checkExpr lhs BoolT
           checkExpr rhs BoolT
-          return True) else return False)
-      unless (x || y) $ semanticFail' "expected operator that produces boolean"
   -- FIXME: ternary
 
 invalidIntegerLiteral :: HexOrDecInteger -> Bool

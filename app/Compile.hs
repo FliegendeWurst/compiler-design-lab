@@ -28,6 +28,7 @@ data Job = Job
 compile :: Job -> L1ExceptT ()
 compile job = do
   ast <- parseAST $ src job
+  liftIO $ print ast
   semanticAnalysis ast
   let z = fromASTToZ ast
   let y = fromZToY z

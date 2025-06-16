@@ -1,8 +1,5 @@
 int main() {
-  return 5;
-
-}/*
-  int result;
+  int result = 0;
   int a;
 
   // Test: <block> variant of <stmt>
@@ -17,6 +14,8 @@ int main() {
     }
   }
   result += a;
+  bool x = 5 < 6;
+
   // Test: <control> / for loop
   for (int b = 0; b < b + 1; b += 1) {
     result += b;
@@ -24,6 +23,7 @@ int main() {
       break;
     }
   }
+
   // Test: "duplicated" (scoped) variable names
   for (int b = 25; b < b + 1; b += 1) {
     result += b;
@@ -37,6 +37,7 @@ int main() {
     result += 20;
   else
     return 1/0;
+} /*
   if (0 != 0)
     return 1/0;
   else
@@ -102,5 +103,4 @@ int main() {
   }
   // Test: control flow analysis
 }
-
 */
