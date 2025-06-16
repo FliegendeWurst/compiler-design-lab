@@ -10,7 +10,7 @@ import qualified Data.Map as Map
 
 import Data.Maybe (listToMaybe)
 import Data.Foldable (forM_)
-import Compile.IR.A (A, Function, Inst (..), Register, RegOrMem (..), xmm0, eax, edx, Label, eax')
+import Compile.IR.A (A, Function, Inst (..), Register, RegOrMem (..), xmm0, eax, edx, Label, eax', ecx)
 import Compile.IR.Y (Expr (..), LitOrIdent (..))
 import Compile.IR.X (X, Stmt (..) )
 import qualified Compile.IR.X as X
@@ -457,7 +457,31 @@ genStmt (Asgn name (BinExpr op e1 e2)) = do
         Z.LogicalOr -> do
           emit $ Mov r r1
           emit $ Or r r2
-        x -> error $ "A/X: forgot to implement " ++ show x -- FIXME
+        Z.LeftShift -> do
+          emit $ Mov xmm0 ecx
+          emit $ Mov r r1
+          emit $ Mov ecx r2
+          emit $ SalCl r
+          emit $ Mov ecx xmm0
+        Z.RightShift -> do
+          emit $ Mov xmm0 ecx
+          emit $ Mov r r1
+          emit $ Mov ecx r2
+          emit $ SarCl r
+          emit $ Mov ecx xmm0
+        Z.BitwiseAnd -> do
+          emit $ Mov r r1
+          emit $ And r r2
+        Z.BitwiseOr -> do
+          emit $ Mov r r1
+          emit $ Or r r2
+        Z.BitwiseXor -> do
+          emit $ Mov r r1
+          emit $ Xor r r2
+        Z.Ternary1 -> do
+          error "why is there still a ternary here..."
+        Z.Ternary2 -> do
+          error "why is there still a ternary here..."
 genStmt (X.Ret (Lit n)) = do
   emit $ Mov eax (Imm n)
   emit Leave

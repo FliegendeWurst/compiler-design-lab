@@ -8,6 +8,7 @@ module Compile.IR.A
     , Memory
     , eax
     , eax'
+    , ecx
     , edx
     , ebp
     , esp
@@ -30,6 +31,8 @@ data Inst
   | Xor RegOrMem RegOrMem
   | And RegOrMem RegOrMem
   | Or RegOrMem RegOrMem
+  | SalCl RegOrMem
+  | SarCl RegOrMem
   | Add RegOrMem RegOrMem
   | Sub RegOrMem RegOrMem
   | Mul RegOrMem RegOrMem
@@ -76,6 +79,7 @@ asMem x = error $ "this is not memory: " ++ show x
 
 eax = Reg 0
 eax' = 0
+ecx = Reg 2
 edx = Reg 3
 ebp = Reg 6
 esp = Reg 7
