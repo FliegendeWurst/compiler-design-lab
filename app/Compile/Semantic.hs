@@ -99,6 +99,15 @@ pushScope :: L1Semantic ()
 pushScope = do
   modify $ \s -> s {
     scope = Map.empty,
+    kind = Plain,
+    parent = Just s
+  }
+
+pushScope' :: L1Semantic ()
+pushScope' = do
+  modify $ \s -> s {
+    scope = Map.empty,
+    kind = Loop,
     parent = Just s
   }
 
@@ -199,7 +208,7 @@ checkStmt (Control (If cond ifB elseB)) = do
     )
 checkStmt (Control (While cond body)) = do
   checkExpr cond BoolT
-  pushScope
+  pushScope'
   checkStmt body
   popScope
 checkStmt (Control (For init cond step body)) = do
@@ -209,7 +218,7 @@ checkStmt (Control (For init cond step body)) = do
     (Just (Init {})) -> do
       semanticFail' "step statement may not be initialization" -- FIXME confirm
     _ -> pure ()
-  pushScope
+  pushScope'
   case init of
     Just x -> do
       checkStmt $ Simple x
