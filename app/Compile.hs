@@ -33,7 +33,7 @@ compile job = do
   let z = fromASTToZ ast
   let y = fromZToY z
   let x = fromYToX y
-  -- liftIO $ print x
+  liftIO $ print x
   let a = fromXToA x (constProp job)
   -- let aFile = out job ++ ".a"
   -- liftIO $ writeFile aFile (unlines $ concatMap (\x -> (map (\y -> show y) (body x))) a)

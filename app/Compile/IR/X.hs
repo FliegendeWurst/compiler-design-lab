@@ -21,7 +21,7 @@ data Stmt
   | Discard String
   | Asgn String Expr
   | Ret LitOrIdent
-  -- condition, if, else
+  -- condition (0 = true, * = false), if, else
   | If LitOrIdent Stmt Stmt
   -- init, body
   -- (both init and body calculate cond, and will end with Continue/Break)

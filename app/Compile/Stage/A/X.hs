@@ -10,9 +10,9 @@ import qualified Data.Map as Map
 
 import Data.Maybe (listToMaybe)
 import Data.Foldable (forM_)
-import Compile.IR.A (A, Function, Inst (..), Register, RegOrMem (..), xmm0, eax, edx)
+import Compile.IR.A (A, Function, Inst (..), Register, RegOrMem (..), xmm0, eax, edx, Label, eax')
 import Compile.IR.Y (Expr (..), LitOrIdent (..))
-import Compile.IR.X (X, Stmt (Asgn, Decl) )
+import Compile.IR.X (X, Stmt (..) )
 import qualified Compile.IR.X as X
 import qualified Compile.IR.A as A
 import Data.Functor (void)
@@ -22,6 +22,7 @@ import qualified Data.Set as Set
 import Control.Monad (when)
 import qualified Compile.IR.Y as Y
 import qualified Compile.IR.Z as Z
+import Data.Int (Int32)
 
 
 type VarName = String
@@ -39,6 +40,9 @@ data CodeGenState = CodeGenState
   , code :: [Inst]
   , constPropagation :: Bool
   , maxStackUse :: Integer
+  , nextLabel :: Integer
+  -- always maps to (Mem x)
+  , varStore :: Map VarName RegOrMem
   }
   deriving (Show)
 
@@ -47,7 +51,7 @@ fromXToA funs constProp = map (`function'` constProp) funs
 
 function' :: X.Function -> Bool -> Function
 function' (X.Function name stmts) constProp = do
-  let initialState = CodeGenState Map.empty Set.empty Set.empty 0 0 [] constProp 0
+  let initialState = CodeGenState Map.empty Set.empty Set.empty 0 0 [] constProp 0 0 Map.empty
   let r = execState (genBlock stmts) initialState
   A.Function name (maxStackUse r) $ code r
 
@@ -57,8 +61,8 @@ regsToAllocate = [1,2,4,5,8,9,10,11,12,13,14,15]
 nextReg :: CodeGen (Maybe Register)
 nextReg = do
   curr <- get
-  let mapX = usedRegs curr
-  let freeRegs = filter (`Set.notMember` mapX) regsToAllocate
+  let inUse = usedRegs curr
+  let freeRegs = filter (`Set.notMember` inUse) regsToAllocate
   return $ listToMaybe freeRegs
 
 spillSomeRegs :: CodeGen ()
@@ -66,19 +70,30 @@ spillSomeRegs = do
   -- just spill all for now
   curr <- get
   let mapPrevious = regMap curr
+  let storePrevious = varStore curr
   -- emit $ Comment $ "spilling " ++ show mapPrevious
   forM_ (Map.assocs mapPrevious) (\case
-    (name, Reg y) -> do
-      newLoc <- spillReg y
-      modify $ \s -> s { regMap = Map.insert name newLoc (regMap s) }
-      modify $ \s -> s { usedRegs = Set.delete y (usedRegs s) }
-    _ -> return ()
+    (_, Mem _) -> return () -- assumed correct already
+    (name, regOrImm) -> do
+      let prevLoc = Map.lookup name storePrevious
+      case prevLoc of
+        Just loc -> do
+          emit $ Mov loc regOrImm
+          modify $ \s -> s { regMap = Map.insert name loc (regMap s) }
+        Nothing -> do
+          newLoc <- spillReg regOrImm
+          modify $ \s -> s { varStore = Map.insert name newLoc (varStore s) }
+          modify $ \s -> s { regMap = Map.insert name newLoc (regMap s) }
+      case regOrImm of
+        Reg y -> do
+          modify $ \s -> s { usedRegs = Set.delete y (usedRegs s) }
+        _ -> pure ()
     )
 
-spillReg :: Register -> CodeGen RegOrMem
+spillReg :: RegOrMem -> CodeGen RegOrMem
 spillReg x = do
   ss <- getFreeStackSlot
-  emit $ Mov (Mem ss) (Reg x)
+  emit $ Mov (Mem ss) x
   return $ Mem ss
 
 getFreeStackSlot :: CodeGen Integer
@@ -104,6 +119,12 @@ freshReg = do
     Just reg -> do
       when (reg > 15) (error "incorrect register used")
       return reg
+
+freshLabel :: CodeGen Label
+freshLabel = do
+  x <- gets nextLabel
+  modify $ \s -> s { nextLabel = x + 1 }
+  return $ "lbl" ++ show x
 
 assignVar :: VarName -> RegOrMem -> CodeGen ()
 assignVar name r = do
@@ -189,19 +210,49 @@ reload (Imm i) = do
   emit $ Mov (Reg newReg) (Imm i)
   return newReg
 
+reloadInto :: Register -> RegOrMem -> CodeGen ()
+reloadInto dest src = do
+  emit $ Mov (Reg dest) src
+
 emit :: Inst -> CodeGen ()
 emit instr = modify $ \s -> s {code = code s ++ [instr]}
 
 genBlock :: [Stmt] -> CodeGen ()
 genBlock = mapM_ genStmt
 
+boolToInt :: Bool -> Int32
+boolToInt False = 1
+boolToInt True = 0
+
 genStmt :: Stmt -> CodeGen ()
+genStmt (If cond ifB elseB) = do
+  elseL <- freshLabel
+  commonL <- freshLabel
+  cond' <- case cond of
+    Ident x -> reloadVar x
+    LitB x -> pure $ Imm (boolToInt x)
+    Lit _ -> error "tried to reload integer as condition"
+  cond'' <- reload cond'
+  emit $ Cmp (Reg cond'') (Imm (boolToInt True))
+  spillSomeRegs
+  emit $ Jne elseL
+  genStmt ifB
+  spillSomeRegs
+  emit $ Jump commonL
+  emit $ Lbl elseL
+  genStmt elseB
+  spillSomeRegs
+  -- implicit: Jump commonL
+  emit $ Lbl commonL
+genStmt (Block inner) = do
+  forM_ inner genStmt
+  -- FIXME: spill
 genStmt (Decl t name) = do
   emit $ Comment $ "decl " ++ show name ++ " typ " ++ show t
   r <- freshReg
   assignVar name $ Reg r
 genStmt (X.Discard name) = do
-  discardVar name
+  discardVar name -- FIXME probably broken due to loops
 genStmt (Asgn name (Plain (Lit n))) = do
   emit $ Comment $ "asgn literal " ++ show name ++ " " ++ show n
   assignVar name $ Imm n
@@ -243,6 +294,7 @@ genStmt (Asgn name (BinExpr op e1 e2)) = do
           assignVar name (Imm $ i1 `quot` i2)
         Z.Mod ->
           assignVar name (Imm $ i1 `rem` i2)
+        -- TODO: add remainder
       return ()
     _ -> do
       reg <- reloadVarForWrite name
@@ -283,6 +335,43 @@ genStmt (Asgn name (BinExpr op e1 e2)) = do
 
           emit $ A.Div r2InRegister
           emit $ Mov r edx
+        Z.IntGe -> do
+          emit $ Zero edx
+          emit $ Mov r (Imm 1)
+          reloadInto eax' r1
+          emit $ Cmp eax r2
+          emit $ CmovGe r eax
+        Z.IntGt -> do
+          emit $ Zero edx
+          emit $ Mov r (Imm 1)
+          reloadInto eax' r1
+          emit $ Cmp eax r2
+          emit $ CmovGt r edx
+        Z.IntLe -> do
+          emit $ Zero edx
+          emit $ Mov r (Imm 1)
+          reloadInto eax' r1
+          emit $ Cmp eax r2
+          emit $ CmovLe r eax
+        Z.IntLt -> do
+          emit $ Zero edx
+          emit $ Mov r (Imm 1)
+          reloadInto eax' r1
+          emit $ Cmp eax r2
+          emit $ CmovLt r edx
+        Z.Equals -> do
+          emit $ Zero edx
+          emit $ Mov r (Imm 1)
+          reloadInto eax' r1
+          emit $ Cmp eax r2
+          emit $ CmovE r edx
+        Z.EqualsNot -> do
+          emit $ Zero edx
+          emit $ Mov r (Imm 1)
+          reloadInto eax' r1
+          emit $ Cmp eax r2
+          emit $ CmovNe r edx
+        x -> error $ "forgot to implement " ++ show x -- FIXME
 genStmt (X.Ret (Lit n)) = do
   emit $ Mov eax (Imm n)
   emit Leave
@@ -292,6 +381,7 @@ genStmt (X.Ret (Ident n)) = do
   emit $ Mov eax rhs
   emit Leave
   emit Return
+genStmt _ = return ()
 
 genPlainExpr :: Y.LitOrIdent -> CodeGen RegOrMem
 genPlainExpr (Lit n) = return $ Imm n

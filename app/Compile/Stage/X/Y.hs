@@ -44,7 +44,7 @@ stmt' (Y.Asgn name e, idx) = do
 stmt' (Y.Ret e, idx) = do
     registerExpr (Plain e) idx
 stmt' (Y.If cond ifB elseB, idx) = do
-  -- FIXME
+  registerExpr (Plain cond) idx
   return $ error "If to X"
 stmt' (Y.For init body, idx) = do
   -- FIXME

@@ -37,6 +37,23 @@ inst' Cdq = "cdq"
 inst' Leave = "leave"
 inst' Return = "ret"
 inst' (Zero dest) = "xor " ++ loc' dest ++ ", " ++ loc' dest
+inst' (Cmp a b) = "cmp " ++ loc' a ++ ", " ++ loc' b
+inst' (Lbl label) = label ++ ":"
+inst' (Jump label) = "jmp " ++ label
+inst' (Je label) = "je " ++ label
+inst' (Jne label) = "jne " ++ label
+inst' (Jgt label) = "jg " ++ label
+inst' (Jge label) = "jge " ++ label
+inst' (Jle label) = "jle " ++ label
+inst' (Jlt label) = "jl " ++ label
+inst' (Jz label) = "jz " ++ label
+inst' (Jnz label) = "jnz " ++ label
+inst' (CmovE dest src) = "cmove " ++ loc' dest ++ ", " ++ loc' src
+inst' (CmovNe dest src) = "cmovne " ++ loc' dest ++ ", " ++ loc' src
+inst' (CmovGt dest src) = "cmovg " ++ loc' dest ++ ", " ++ loc' src
+inst' (CmovGe dest src) = "cmovge " ++ loc' dest ++ ", " ++ loc' src
+inst' (CmovLe dest src) = "cmovle " ++ loc' dest ++ ", " ++ loc' src
+inst' (CmovLt dest src) = "cmovl " ++ loc' dest ++ ", " ++ loc' src
 inst' (Comment s) = "# " ++ s
 
 loc' :: RegOrMem -> String
