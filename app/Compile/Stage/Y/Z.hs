@@ -153,6 +153,20 @@ makePlain' (Z.UnExpr op e) = do
     let t' = typeExpr ctx (Z.UnExpr op e)
     modify $ \s -> s { stmts = Asgn fresh e' : Decl t' fresh : stmts s }
     return $ Ident fresh
+makePlain' (Z.BinExpr Z.Ternary1 cond (Z.BinExpr Z.Ternary2 e1 e2)) = do
+  ctx <- gets typs
+
+  condV <- freshTemp
+  resV <- freshTemp
+  let resT = Z.typeExpr ctx e1
+  cond' <- makePlain' cond
+  push $ Decl BoolT condV
+  push $ Asgn condV $ Plain cond'
+
+  push $ Decl resT resV
+  stmt' (Z.If (Z.Ident condV) (Z.Simple $ Z.Asgn resV Nothing e1) (Z.Simple $ Z.Asgn resV Nothing e2))
+
+  return $ Ident resV
 makePlain' (Z.BinExpr op e1 e2) = do
     fresh <- freshTemp
     fresh1 <- freshTemp

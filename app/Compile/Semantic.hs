@@ -2,8 +2,8 @@ module Compile.Semantic
   ( semanticAnalysis
   ) where
 
-import           Compile.AST (AST(..), Expr(..), Stmt(..), Simp(..), Ctrl(..), posPretty, HexOrDecInteger (..), intValue, ExprType (..), opIsIntIntToInt, opIsIntIntToBool, opIsBoolBoolToBool, typeExpr)
-import           Error (L1ExceptT, semanticFail)
+import           Compile.AST (AST(..), Expr(..), Stmt(..), Simp(..), Ctrl(..), posPretty, HexOrDecInteger (..), intValue, ExprType (..), opIsIntIntToInt, typeExpr, Op (Ternary1, Ternary2))
+import           Error (L1ExceptT, semanticFail, parserFail)
 
 import           Control.Monad (unless, when, forM_)
 import           Control.Monad.State
@@ -34,6 +34,9 @@ type L1Semantic = StateT Namespace L1ExceptT
 -- A little wrapper so we don't have to ($ lift) everywhere inside the StateT
 semanticFail' :: String -> L1Semantic a
 semanticFail' = lift . semanticFail
+
+parserFail' :: String -> L1Semantic a
+parserFail' = lift . parserFail
 
 semanticAnalysis :: AST -> L1ExceptT ()
 semanticAnalysis ast = do
@@ -283,9 +286,17 @@ checkExpr (BinExpr op lhs rhs) t = do
   let intIntToInt = opIsIntIntToInt op
   case t of
     IntT -> do
-      unless intIntToInt $ semanticFail' "expected integer operator"
-      checkExpr lhs IntT
-      checkExpr rhs IntT
+      do
+        when (typeExpr ts lhs == IntT) $ do
+          unless intIntToInt $ semanticFail' "expected integer operator"
+          checkExpr lhs IntT
+          checkExpr rhs IntT
+        when (typeExpr ts lhs == BoolT) $ do
+          unless (op == Ternary1) $ semanticFail' "ternary fail"
+          case rhs of
+            (BinExpr Ternary2 _ _) -> pure ()
+            _ -> parserFail' "illegal ternary"
+          checkExpr rhs IntT
     BoolT -> do
       do
         when (typeExpr ts lhs == IntT) $ do
@@ -295,7 +306,6 @@ checkExpr (BinExpr op lhs rhs) t = do
         when (typeExpr ts lhs == BoolT) $ do
           checkExpr lhs BoolT
           checkExpr rhs BoolT
-  -- FIXME: ternary
 
 invalidIntegerLiteral :: HexOrDecInteger -> Bool
 invalidIntegerLiteral (Dec x) = x < 0 || x >2^(31 :: Integer)

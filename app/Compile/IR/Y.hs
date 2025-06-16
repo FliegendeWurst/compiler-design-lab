@@ -37,7 +37,7 @@ data Stmt
 data Expr
   = Plain LitOrIdent
   | UnExpr UnOp LitOrIdent
-  | BinExpr BinOp LitOrIdent LitOrIdent
+  | BinExpr BinOp LitOrIdent LitOrIdent -- TODO: remove ternary1/2 from BinOp
   deriving (Show)
 
 data LitOrIdent

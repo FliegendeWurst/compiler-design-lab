@@ -28,6 +28,8 @@ data Function = Function
 data Inst
   = Mov RegOrMem RegOrMem
   | Xor RegOrMem RegOrMem
+  | And RegOrMem RegOrMem
+  | Or RegOrMem RegOrMem
   | Add RegOrMem RegOrMem
   | Sub RegOrMem RegOrMem
   | Mul RegOrMem RegOrMem

@@ -74,8 +74,8 @@ typeExpr _ (BinExpr IntGt _ _) = BoolT
 typeExpr _ (BinExpr IntGe _ _) = BoolT
 typeExpr _ (BinExpr Equals _ _) = BoolT
 typeExpr _ (BinExpr EqualsNot _ _) = BoolT
-typeExpr _ctx (BinExpr Ternary1 _ _) = error "ternary type" -- FIXME
-typeExpr _ctx (BinExpr Ternary2 _ _) = error "ternary type" -- FIXME
+typeExpr ctx (BinExpr Ternary1 _ res) = typeExpr ctx res
+typeExpr ctx (BinExpr Ternary2 lhs _) = typeExpr ctx lhs
 typeExpr _ (BinExpr {}) = IntT
 
 data HexOrDecInteger
@@ -128,6 +128,7 @@ opIsIntIntToInt BitwiseXor = True
 opIsIntIntToInt BitwiseOr = True
 opIsIntIntToInt LeftShift = True
 opIsIntIntToInt RightShift = True
+opIsIntIntToInt Ternary2 = True
 opIsIntIntToInt _ = False
 
 opIsIntIntToBool :: Op -> Bool
@@ -144,6 +145,7 @@ opIsBoolBoolToBool LogicalAnd = True
 opIsBoolBoolToBool LogicalOr = True
 opIsBoolBoolToBool Equals = True
 opIsBoolBoolToBool EqualsNot = True
+opIsBoolBoolToBool Ternary2 = True
 opIsBoolBoolToBool _ = False
 
 -- re-exported for convenience

@@ -58,8 +58,8 @@ typeExpr _ (BinExpr IntGt _ _) = BoolT
 typeExpr _ (BinExpr IntGe _ _) = BoolT
 typeExpr _ (BinExpr Equals _ _) = BoolT
 typeExpr _ (BinExpr EqualsNot _ _) = BoolT
-typeExpr _ctx (BinExpr Ternary1 _ _) = error "ternary type" -- FIXME
-typeExpr _ctx (BinExpr Ternary2 _ _) = error "ternary type" -- FIXME
+typeExpr ctx (BinExpr Ternary1 _ res) = typeExpr ctx res
+typeExpr ctx (BinExpr Ternary2 lhs _) = typeExpr ctx lhs
 typeExpr _ (BinExpr {}) = IntT
 
 -- Nothing means =, Just is for +=, %=, ...

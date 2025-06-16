@@ -249,8 +249,8 @@ genBlock :: [Stmt] -> CodeGen ()
 genBlock = mapM_ genStmt
 
 boolToInt :: Bool -> Int32
-boolToInt False = 1
-boolToInt True = 0
+boolToInt False = 0
+boolToInt True = 1
 
 genStmt :: Stmt -> CodeGen ()
 genStmt (If cond ifB elseB) = do
@@ -430,7 +430,13 @@ genStmt (Asgn name (BinExpr op e1 e2)) = do
           reloadInto eax' r1
           emit $ Cmp eax r2
           emit $ CmovNe r edx
-        x -> error $ "forgot to implement " ++ show x -- FIXME
+        Z.LogicalAnd -> do
+          emit $ Mov r r1
+          emit $ And r r2
+        Z.LogicalOr -> do
+          emit $ Mov r r1
+          emit $ Or r r2
+        x -> error $ "A/X: forgot to implement " ++ show x -- FIXME
 genStmt (X.Ret (Lit n)) = do
   emit $ Mov eax (Imm n)
   emit Leave

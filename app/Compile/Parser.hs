@@ -229,11 +229,11 @@ opTable =
   , [ InfixL (BinExpr Equals <$ symbol "==")
     , InfixL (BinExpr EqualsNot <$ symbol "!=")
     ]
-  , [ InfixL (BinExpr BitwiseAnd <$ symbol "&")
+  , [ InfixL (BinExpr BitwiseAnd <$ symbol' "&")
     ]
   , [ InfixL (BinExpr BitwiseXor <$ symbol "^")
     ]
-  , [ InfixL (BinExpr BitwiseOr <$ symbol "|")
+  , [ InfixL (BinExpr BitwiseOr <$ symbol' "|")
     ]
   , [ InfixL (BinExpr LogicalAnd <$ symbol "&&")
     ]
@@ -263,6 +263,12 @@ lexeme = L.lexeme sc
 
 symbol :: Text -> Parser Text
 symbol = L.symbol sc
+
+symbol' :: Text -> Parser Text
+symbol' it = try (do
+  void $ symbol it
+  notFollowedBy opLetter
+  return it)
 
 parens :: Parser a -> Parser a
 parens = between (symbol "(") (symbol ")")
