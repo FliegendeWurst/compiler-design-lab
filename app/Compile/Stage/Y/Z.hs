@@ -50,6 +50,14 @@ popScope = do
   }
   return ss
 
+peekScope :: CodeGen [Stmt]
+peekScope = do
+  ss <- gets stmts
+  modify $ \s -> s {
+    stmts = []
+  }
+  return ss
+
 fromZToY :: Z -> Y
 fromZToY = map function'
 
@@ -100,20 +108,19 @@ stmt' (Z.For init cond step body) = do
 
   pushScope
   stmt' $ maybe (Z.Block []) Z.Simple init
-  e' <- expr' cond
-  push $ Asgn condV e'
-  push $ If (Ident condV) Continue Break
-  init' <- popScope
+  push $ Decl BoolT condV
+  push Continue
+  init' <- peekScope
 
-  pushScope
   stmt' body
+  push ForStepLabel
   stmt' $ maybe (Z.Block []) Z.Simple step
   e2' <- expr' cond
   push $ Asgn condV e2'
   push $ If (Ident condV) Continue Break
   body' <- popScope
 
-  push $ For init' body'
+  push $ For (reverse init') (reverse body') (Plain $ Ident condV)
 stmt' Z.Continue = push Continue
 stmt' Z.Break = push Break
 stmt' (Z.Block stmtsB) = do

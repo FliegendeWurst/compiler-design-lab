@@ -46,9 +46,11 @@ stmt' (Y.Ret e, idx) = do
 stmt' (Y.If cond ifB elseB, idx) = do
   registerExpr (Plain cond) idx
   return $ error "If to X"
-stmt' (Y.For init body, idx) = do
-  -- FIXME
-  return $ error "For to X"
+stmt' (Y.For init body cond, idx) = do
+  registerExpr cond idx -- FIXME after continue / end of loop body
+stmt' (Y.ForStepLabel, _) = do
+  -- FIXME see above
+  return ()
 stmt' (Y.Continue, idx) = pure () -- ?
 stmt' (Y.Break, idx) = pure () -- ?
 stmt' (Y.Block ss, idx) = do
@@ -72,7 +74,8 @@ stmtIdentity (Y.Decl t x) = Decl t x
 stmtIdentity (Y.Asgn name e) = Asgn name e
 stmtIdentity (Y.Ret e) = Ret e
 stmtIdentity (Y.If cond ifB elseB) = If cond (stmtIdentity ifB) (stmtIdentity elseB)
-stmtIdentity (Y.For init body) = For (map stmtIdentity init) $ map stmtIdentity body
+stmtIdentity (Y.For init body _) = For (map stmtIdentity init) $ map stmtIdentity body
+stmtIdentity Y.ForStepLabel = ForStepLabel
 stmtIdentity Y.Continue = Continue
 stmtIdentity Y.Break = Break
 stmtIdentity (Y.Block ss) = Block $ map stmtIdentity ss

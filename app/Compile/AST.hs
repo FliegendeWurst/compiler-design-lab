@@ -22,7 +22,7 @@ import Text.Megaparsec
 import Prelude hiding (init)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Util (unwrap)
+import Util (expect)
 
 data AST =
   Function [Stmt] SourcePos
@@ -64,7 +64,7 @@ data Expr
 typeExpr :: Map String ExprType -> Expr -> ExprType
 typeExpr _ (IntExpr _ _) = IntT
 typeExpr _ (BoolLit _) = BoolT
-typeExpr ctx (Ident ident _) = unwrap $ Map.lookup ident ctx
+typeExpr ctx (Ident ident _) = expect "failed to type identifier" $ Map.lookup ident ctx
 typeExpr ctx (UnExpr _ e) = typeExpr ctx e
 typeExpr _ (BinExpr LogicalAnd _ _) = BoolT
 typeExpr _ (BinExpr LogicalOr _ _) = BoolT

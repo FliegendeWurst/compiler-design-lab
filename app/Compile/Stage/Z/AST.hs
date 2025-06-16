@@ -12,7 +12,7 @@ import Compile.IR.Z
       Simp(..) )
 import qualified Compile.AST as AST
 import Prelude hiding (init)
-import Util (unwrap)
+import Util (expect)
 
 fromASTToZ :: AST -> Z
 fromASTToZ (AST.Function stmts _) = [function' "main" stmts]
@@ -40,7 +40,7 @@ expr' (AST.IntExpr garbage _) = Lit $ fromInteger $ intValue garbage
 expr' (AST.BoolLit x) = LitB x
 expr' (AST.Ident name _) = Ident name
 expr' (AST.UnExpr op e) = UnExpr (unOp' op) (expr' e)
-expr' (AST.BinExpr op e1 e2) = BinExpr (unwrap $ binOp' $ Just op) (expr' e1) (expr' e2)
+expr' (AST.BinExpr op e1 e2) = BinExpr (expect "failed to lower binop" $ binOp' $ Just op) (expr' e1) (expr' e2)
 
 binOp' :: AST.AsgnOp -> Maybe BinOp
 binOp' (Just AST.Add) = Just Add

@@ -13,7 +13,7 @@ import Data.Int (Int32)
 import Compile.AST (ExprType (..))
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Util (unwrap)
+import Util (expect)
 
 type Z = [Function]
 
@@ -48,7 +48,7 @@ data Expr
 typeExpr :: Map String ExprType -> Expr -> ExprType
 typeExpr _ (Lit _) = IntT
 typeExpr _ (LitB _) = BoolT
-typeExpr ctx (Ident ident) = unwrap $ Map.lookup ident ctx
+typeExpr ctx (Ident ident) = expect ("failed to type Z-expr using ctx " ++ show ctx ++ ", identifier = " ++ ident) $ Map.lookup ident ctx
 typeExpr ctx (UnExpr _ e) = typeExpr ctx e
 typeExpr _ (BinExpr LogicalAnd _ _) = BoolT
 typeExpr _ (BinExpr LogicalOr _ _) = BoolT

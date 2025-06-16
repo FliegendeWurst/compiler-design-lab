@@ -23,6 +23,8 @@ import Control.Monad (when)
 import qualified Compile.IR.Y as Y
 import qualified Compile.IR.Z as Z
 import Data.Int (Int32)
+import Prelude hiding (init)
+import Util (snd3, fst3, thd3, expect)
 
 
 type VarName = String
@@ -43,6 +45,8 @@ data CodeGenState = CodeGenState
   , nextLabel :: Integer
   -- always maps to (Mem x)
   , varStore :: Map VarName RegOrMem
+  -- stores for each loop: label for continue, break
+  , loopStack :: [(Label,Label, Label)]
   }
   deriving (Show)
 
@@ -51,12 +55,25 @@ fromXToA funs constProp = map (`function'` constProp) funs
 
 function' :: X.Function -> Bool -> Function
 function' (X.Function name stmts) constProp = do
-  let initialState = CodeGenState Map.empty Set.empty Set.empty 0 0 [] constProp 0 0 Map.empty
+  let initialState = CodeGenState Map.empty Set.empty Set.empty 0 0 [] constProp 0 0 Map.empty []
   let r = execState (genBlock stmts) initialState
   A.Function name (maxStackUse r) $ code r
 
 regsToAllocate :: [Register]
 regsToAllocate = [1,2,4,5,8,9,10,11,12,13,14,15]
+
+-- body, continue, break
+pushLoop :: Label -> Label -> Label -> CodeGen ()
+pushLoop bodyL contL breakL = do
+  modify $ \s -> s { loopStack = (bodyL,contL,breakL):loopStack s }
+popLoop :: CodeGen ()
+popLoop = do
+  modify $ \s -> s { loopStack = tail (loopStack s) }
+
+peekLoop :: CodeGen (Label, Label, Label)
+peekLoop = do
+  ls <- gets loopStack
+  return $ head ls
 
 nextReg :: CodeGen (Maybe Register)
 nextReg = do
@@ -148,6 +165,12 @@ lookupVar name = do
     Just r -> return r
     Nothing -> error $ "unreachable, fix your semantic analysis I guess " ++ name ++ " map = " ++ show m
 
+    --Nothing -> do
+    --  m2 <- gets varStore
+    --  case Map.lookup name m2 of
+    --    Just r -> return r
+    --    Nothing -> error $ "unreachable, fix your semantic analysis I guess " ++ name ++ " map = " ++ show m
+
 reloadVar :: VarName -> CodeGen RegOrMem
 reloadVar name = do
   m <- gets regMap
@@ -157,7 +180,7 @@ reloadVar name = do
       newReg <- reload (Mem x)
       modify $ \s -> s { regMap = Map.insert name (Reg newReg) (regMap s) }
       modify $ \s -> s { usedRegs = Set.insert newReg (usedRegs s) }
-      modify $ \s -> s { freeStackSlots = Set.insert x (freeStackSlots s) }
+      -- modify $ \s -> s { freeStackSlots = Set.insert x (freeStackSlots s) }
       return $ Reg newReg
     Just (Imm i) -> do
       return $ Imm i
@@ -196,7 +219,12 @@ reloadVarForWrite name = do
       modify $ \s -> s {regMap = Map.insert name (Reg newReg) (regMap s)}
       modify $ \s -> s { usedRegs = Set.insert newReg (usedRegs s) }
       return newReg
-    Nothing -> error "unreachable, fix your semantic analysis I guess"
+    Nothing -> do
+      m2 <- gets varStore
+      let realLoc = expect ("failed to find stored variable " ++ name ++ " in " ++ show m2 ++ " or normal map " ++ show m) $ Map.lookup name m2
+      modify $ \s -> s { regMap = Map.insert name realLoc (regMap s) }
+      reloadVarForWrite name
+
 
 reload :: RegOrMem -> CodeGen Register
 reload (Reg x) = return x
@@ -244,6 +272,27 @@ genStmt (If cond ifB elseB) = do
   spillSomeRegs
   -- implicit: Jump commonL
   emit $ Lbl commonL
+genStmt (For init body) = do
+  bodyL <- freshLabel
+  continueL <- freshLabel
+  breakL <- freshLabel
+  pushLoop bodyL continueL breakL
+  forM_ init genStmt
+  emit $ Lbl bodyL
+  forM_ body genStmt
+  emit $ Lbl breakL
+  popLoop
+genStmt ForStepLabel = do
+  lbls <- peekLoop
+  emit $ Lbl (snd3 lbls)
+genStmt Continue = do
+  spillSomeRegs
+  lbls <- peekLoop
+  emit $ Jump (fst3 lbls)
+genStmt Break = do
+  spillSomeRegs
+  lbls <- peekLoop
+  emit $ Jump (thd3 lbls)
 genStmt (Block inner) = do
   forM_ inner genStmt
   -- FIXME: spill

@@ -23,9 +23,12 @@ data Stmt
   | Ret LitOrIdent
   -- condition (0 = true, * = false), if, else
   | If LitOrIdent Stmt Stmt
-  -- init, body
+  -- init, body, (cond)
   -- (both init and body calculate cond, and will end with Continue/Break)
-  | For [Stmt] [Stmt]
+  -- (cond only provided for analysis)
+  | For [Stmt] [Stmt] Expr
+  -- contained in the for's body
+  | ForStepLabel
   | Continue
   | Break
   | Block [Stmt]

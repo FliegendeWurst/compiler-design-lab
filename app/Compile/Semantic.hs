@@ -8,7 +8,7 @@ import           Error (L1ExceptT, semanticFail)
 import           Control.Monad (unless, when, forM_)
 import           Control.Monad.State
 import qualified Data.Map as Map
-import Util (unwrap, headM)
+import Util (expect, headM)
 import Prelude hiding (init)
 import Data.Maybe (catMaybes, isNothing, isJust)
 import Data.Map (Map)
@@ -102,8 +102,8 @@ pushScope = do
 popScope :: L1Semantic ()
 popScope = do
   modify $ \s -> s {
-    scope = scope $ unwrap $ parent s,
-    parent = parent $ unwrap $ parent s
+    scope = scope $ expect "failed to pop semantic scope" $ parent s,
+    parent = parent $ expect "failed to pop semantic scope" $ parent s
   }
 
 checkStmts :: [Stmt] -> L1Semantic ()
@@ -161,8 +161,8 @@ checkStmt (Simple (Asgn name Nothing e pos)) = do
         ++ name
         ++ " at: "
         ++ posPretty pos
-  checkExpr e $ unwrap typ
-  makeInitialized name $ unwrap typ
+  checkExpr e $ expect "impossible" typ
+  makeInitialized name $ expect "impossible" typ
 checkStmt (Simple (Asgn name (Just _) e pos)) = do
   ns <- get
   let typ = isInitialized ns name
@@ -172,8 +172,8 @@ checkStmt (Simple (Asgn name (Just _) e pos)) = do
         ++ name
         ++ " at: "
         ++ posPretty pos
-  checkExpr e $ unwrap typ
-  makeInitialized name $ unwrap typ
+  checkExpr e $ expect "impossible" typ
+  makeInitialized name $ expect "impossible" typ
 checkStmt (Control (If cond ifB elseB)) = do
   checkExpr cond BoolT
   ns <- get
