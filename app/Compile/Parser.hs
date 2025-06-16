@@ -5,7 +5,7 @@ module Compile.Parser
   ( parseAST
   ) where
 
-import           Compile.AST (AST(..), Expr(..), Op(..), Stmt(..), Simp(..), Ctrl(..), HexOrDecInteger (..))
+import           Compile.AST (AST(..), Expr(..), Op(..), Stmt(..), Simp(..), Ctrl(..), HexOrDecInteger (..), ExprType (..))
 import           Error (L1ExceptT, parserFail)
 
 import           Control.Monad.Combinators.Expr
@@ -58,18 +58,18 @@ decl = try declInit <|> declNoInit
 declNoInit :: Parser Stmt
 declNoInit = do
   pos <- getSourcePos
-  reserved "int"
+  t <- typ
   name <- identifier
-  return $ Simple $ Decl name pos
+  return $ Simple $ Decl t name pos
 
 declInit :: Parser Stmt
 declInit = do
   pos <- getSourcePos
-  reserved "int"
+  t <- typ
   name <- identifier
   void $ symbol "="
   e <- expr
-  return $ Simple $ Init name e pos
+  return $ Simple $ Init t name e pos
 
 simp :: Parser Stmt
 simp = do
@@ -233,6 +233,14 @@ hexadecimal = do
 reserved :: Text -> Parser ()
 reserved w = void (lexeme $ try (string w <* notFollowedBy identLetter))
 
+typ :: Parser ExprType
+typ = do
+  word <- identifierRaw
+  case word of
+    "int" -> return IntT
+    "bool" -> return BoolT
+    w -> fail $ "Nonexistent type: " ++ w
+
 reservedWords :: [String]
 reservedWords =
   [ "alloc"
@@ -289,3 +297,10 @@ identifier = (lexeme . try) (p >>= check) <|> parens identifier
       if x `elem` reservedWords
         then fail (x ++ " is reserved")
         else return x
+
+identifierRaw :: Parser String
+identifierRaw = (lexeme . try) (p >>= check) <|> parens identifier
+  where
+    p = (:) <$> identStart <*> many identLetter
+    check = return
+

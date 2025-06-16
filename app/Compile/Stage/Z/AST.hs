@@ -2,8 +2,17 @@ module Compile.Stage.Z.AST
     ( fromASTToZ
     ) where
 import Compile.AST (AST, intValue)
-import Compile.IR.Z (Z, Function (Function), Stmt (..), Expr (..), BinOp (..), UnOp (..))
+import Compile.IR.Z
+    ( Z,
+      Function(Function),
+      Stmt(..),
+      Expr(..),
+      BinOp(..),
+      UnOp(..),
+      Simp(..) )
 import qualified Compile.AST as AST
+import Prelude hiding (init)
+import Util (unwrap)
 
 fromASTToZ :: AST -> Z
 fromASTToZ (AST.Function stmts _) = [function' "main" stmts]
@@ -12,13 +21,24 @@ function' :: String -> [ AST.Stmt ] -> Function
 function' name stmts = Function name (map stmt' stmts)
 
 stmt' :: AST.Stmt -> Stmt
-stmt' (AST.Decl name _) = Decl name
-stmt' (AST.Init name e _) = Init name (expr' e)
-stmt' (AST.Asgn name op e _) = Asgn name (binOp' op) (expr' e)
-stmt' (AST.Ret e _) = Ret (expr' e)
+stmt' (AST.Simple s) = Simple $ simp' s
+stmt' (AST.Control (AST.If cond ifB (Just elseB))) = If (expr' cond) (stmt' ifB) $ Just (stmt' elseB)
+stmt' (AST.Control (AST.If cond ifB Nothing)) = If (expr' cond) (stmt' ifB) Nothing
+stmt' (AST.Control (AST.While cond body)) = While (expr' cond) $ stmt' body
+stmt' (AST.Control (AST.For init cond step body)) = For (fmap simp' init) (expr' cond) (fmap simp' step) $ stmt' body
+stmt' (AST.Control AST.Continue) = Continue
+stmt' (AST.Control AST.Break) = Break
+stmt' (AST.Control (AST.Ret e _)) = Ret (expr' e)
+stmt' (AST.Block stmts) = Block (map stmt' stmts)
+
+simp' :: AST.Simp -> Simp
+simp' (AST.Decl t name _) = Decl t name
+simp' (AST.Init t name e _) = Init t name (expr' e)
+simp' (AST.Asgn name op e _) = Asgn name (binOp' op) (expr' e)
 
 expr' :: AST.Expr -> Expr
 expr' (AST.IntExpr garbage _) = Lit $ fromInteger $ intValue garbage
+expr' (AST.BoolLit x) = LitB x
 expr' (AST.Ident name _) = Ident name
 expr' (AST.UnExpr op e) = UnExpr (unOp' op) (expr' e)
 expr' (AST.BinExpr op e1 e2) = BinExpr (unwrap $ binOp' $ Just op) (expr' e1) (expr' e2)

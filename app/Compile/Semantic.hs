@@ -2,15 +2,15 @@ module Compile.Semantic
   ( semanticAnalysis
   ) where
 
-import           Compile.AST (AST(..), Expr(..), Stmt(..), Simp(..), Ctrl(..), posPretty, HexOrDecInteger (..), intValue, ExprType (..))
+import           Compile.AST (AST(..), Expr(..), Stmt(..), Simp(..), Ctrl(..), posPretty, HexOrDecInteger (..), intValue, ExprType (..), opIsIntIntToInt, opIsIntIntToBool, opIsBoolBoolToBool)
 import           Error (L1ExceptT, semanticFail)
 
 import           Control.Monad (unless, when)
 import           Control.Monad.State
 import qualified Data.Map as Map
-import Util (unwrap)
+import Util (unwrap, headM)
 import Prelude hiding (init)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, isNothing, isJust)
 
 data VariableStatus
   = Declared ExprType
@@ -51,18 +51,21 @@ isInLoop ns =
     thisScope = kind ns == Loop
     parentScope = maybe False isInLoop (parent ns)
 
-isDeclared :: Namespace -> String -> Bool
+isDeclared :: Namespace -> String -> Maybe ExprType
 isDeclared ns name =
-  thisScope || parentScope
+  headM $ catMaybes [thisScope, parentScope]
   where
-    thisScope = Map.member name (scope ns)
+    thisScope = case Map.lookup name (scope ns) of
+      Just (Initialized typ) -> Just typ
+      Just (Declared typ) -> Just typ
+      _ -> Nothing
     parentScope = case parent ns of
       Just parentNs -> isDeclared parentNs name
-      Nothing -> False
+      Nothing -> Nothing
 
 isInitialized :: Namespace -> String -> Maybe ExprType
 isInitialized ns name =
-  maybe Nothing (head $ catMaybes [thisScope, parentScope])
+  headM $ catMaybes [thisScope, parentScope]
   where
     thisScope = case Map.lookup name (scope ns) of
       Just (Initialized typ) -> Just typ
@@ -71,13 +74,13 @@ isInitialized ns name =
       Just parentNs -> isInitialized parentNs name
       Nothing -> Nothing
 
-makeDeclared :: String -> L1Semantic ()
-makeDeclared name = do
-  modify $ \s -> s { scope = Map.insert name Declared (scope s) }
+makeDeclared :: String -> ExprType-> L1Semantic ()
+makeDeclared name typ = do
+  modify $ \s -> s { scope = Map.insert name (Declared typ) (scope s) }
 
-makeInitialized :: String -> L1Semantic ()
-makeInitialized name = do
-  modify $ \s -> s { scope = Map.insert name Initialized (scope s) }
+makeInitialized :: String -> ExprType -> L1Semantic ()
+makeInitialized name typ = do
+  modify $ \s -> s { scope = Map.insert name (Initialized typ) (scope s) }
 
 pushScope :: L1Semantic ()
 pushScope = do
@@ -108,39 +111,41 @@ checkStmts (x:y) = do
 checkStmt :: Stmt -> L1Semantic ()
 checkStmt (Simple (Decl typ name pos)) = do
   ns <- get
-  when (isDeclared ns name)
+  when (isNothing (isDeclared ns name))
     $ semanticFail'
     $ "Variable " ++ name ++ " redeclared at: " ++ posPretty pos
-  makeDeclared name
+  makeDeclared name typ
 checkStmt (Simple (Init typ name e pos)) = do
   ns <- get
-  when (isDeclared ns name)
+  when (isNothing (isDeclared ns name))
     $ semanticFail'
     $ "Variable " ++ name ++ " redeclared (initialized) at: " ++ posPretty pos
-  checkExpr e
-  makeInitialized name
+  checkExpr e typ
+  makeInitialized name typ
 checkStmt (Simple (Asgn name Nothing e pos)) = do
   ns <- get
-  unless (isDeclared ns name)
+  let typ = isDeclared ns name
+  when (isNothing typ)
     $ semanticFail'
     $ "Trying to assign to undeclared variable "
         ++ name
         ++ " at: "
         ++ posPretty pos
-  checkExpr e
-  makeInitialized name
+  checkExpr e $ unwrap typ
+  makeInitialized name $ unwrap typ
 checkStmt (Simple (Asgn name (Just _) e pos)) = do
   ns <- get
-  unless (isInitialized ns name)
+  let typ = isInitialized ns name
+  when (isNothing typ)
     $ semanticFail'
     $ "Trying to op-assign to uninitialized variable "
         ++ name
         ++ " at: "
         ++ posPretty pos
-  checkExpr e
-  makeInitialized name
+  checkExpr e $ unwrap typ
+  makeInitialized name $ unwrap typ
 checkStmt (Control (If cond ifB elseB)) = do
-  checkExpr cond
+  checkExpr cond BoolT
   pushScope
   checkStmt ifB
   popScope
@@ -151,17 +156,23 @@ checkStmt (Control (If cond ifB elseB)) = do
       popScope
     Nothing -> pure ()
 checkStmt (Control (While cond body)) = do
-  checkExpr cond
+  checkExpr cond BoolT
   pushScope
   checkStmt body
   popScope
 checkStmt (Control (For init cond step body)) = do
+  case step of
+    (Just (Decl {})) -> do
+      semanticFail' "step statement may not be declaration"
+    (Just (Init {})) -> do
+      semanticFail' "step statement may not be initialization" -- FIXME confirm
+    _ -> pure ()
   pushScope
   case init of
     Just x -> do
       checkStmt $ Simple x
     Nothing -> pure ()
-  checkExpr cond
+  checkExpr cond BoolT
   case step of
     Just x -> do
       checkStmt $ Simple x
@@ -176,7 +187,7 @@ checkStmt (Control Break) = do
   ns <- get
   unless (isInLoop ns)
     $ semanticFail' "break not in loop"
-checkStmt (Control (Ret e _)) = checkExpr e
+checkStmt (Control (Ret e _)) = checkExpr e IntT
 checkStmt (Block body) = do
   pushScope
   checkStmts body
@@ -191,23 +202,56 @@ checkExpr (IntExpr n pos) IntT = do
   when (invalidIntegerLiteral n)
     $ semanticFail'
     $ "Integer literal " ++ show (intValue n) ++ " out of bounds at: " ++ posPretty pos
-checkExpr (IntExpr n pos) BoolT = do
+checkExpr (IntExpr _ pos) BoolT = do
   semanticFail'
     $ "Integer literal used as boolean at: " ++ posPretty pos
-checkExpr (BoolLit x) BoolT = do
+checkExpr (BoolLit _) BoolT = do
   return ()
-checkExpr (BoolLit x) IntT = do
+checkExpr (BoolLit _) IntT = do
   semanticFail' "Boolean literal used as integer"
 checkExpr (Ident name pos) t = do
   ns <- get
-  unless (isInitialized ns name)
+  let typ = isInitialized ns name
+  when (isNothing typ)
     $ semanticFail'
     $ "Variable "
             ++ name
             ++ " used without initialization at: "
             ++ posPretty pos
+  when (typ /= Just t)
+    $ semanticFail'
+    $ "Variable "
+            ++ name
+            ++ " used for wrong type at: "
+            ++ posPretty pos
 checkExpr (UnExpr _ e) t = checkExpr e t
-checkExpr (BinExpr _ lhs rhs) t = (checkExpr lhs t) >> (checkExpr rhs t) -- FIXME
+-- Cases:
+-- int · int → int
+-- int · int → bool
+-- bool · bool → bool
+-- AND THE STUPID TERNARY!!!
+checkExpr (BinExpr op lhs rhs) t = do
+  let intIntToInt = opIsIntIntToInt op
+  let intIntToBool = opIsIntIntToBool op
+  let boolBoolToBool = opIsBoolBoolToBool op
+  case t of
+    IntT -> do
+      unless (intIntToInt) $ semanticFail' "expected integer operator"
+      checkExpr lhs IntT
+      checkExpr rhs IntT
+    BoolT -> do
+      x <- do
+        unless (intIntToBool) $ return False
+        checkExpr lhs IntT
+        checkExpr rhs IntT
+        return True
+      y <- do
+        unless (boolBoolToBool) $ return False
+        checkExpr lhs BoolT
+        checkExpr rhs BoolT
+        return True
+      unless (x || y) $ semanticFail' "expected operator that produces boolean"
+  -- FIXME: ternary
 
 invalidIntegerLiteral :: HexOrDecInteger -> Bool
 invalidIntegerLiteral (Dec x) = x < 0 || x >2^(31 :: Integer)
@@ -217,6 +261,8 @@ checkReturns :: AST -> L1Semantic ()
 checkReturns (Function stmts _) = do
   let returns = any isReturn stmts
   unless returns $ semanticFail' "Program does not return"
-  where
-    isReturn (Ret _ _) = True
-    isReturn _ = False
+
+isReturn :: Stmt -> Bool
+isReturn (Control (Ret _ _)) = True
+isReturn (Control (If _ ifB (Just elseB))) = isReturn ifB && isReturn elseB
+isReturn _ = False

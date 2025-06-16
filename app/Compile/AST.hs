@@ -11,6 +11,9 @@ module Compile.AST
   , Op(..)
   , showAsgnOp
   , posPretty
+  , opIsIntIntToInt
+  , opIsIntIntToBool
+  , opIsBoolBoolToBool
   ) where
 
 import Data.List (intercalate)
@@ -90,6 +93,35 @@ data Op
   | BitwiseNot
   | Nop
   deriving (Eq)
+
+opIsIntIntToInt :: Op -> Bool
+opIsIntIntToInt Mul = True
+opIsIntIntToInt Add = True
+opIsIntIntToInt Sub = True
+opIsIntIntToInt Div = True
+opIsIntIntToInt Mod = True
+opIsIntIntToInt BitwiseAnd = True
+opIsIntIntToInt BitwiseXor = True
+opIsIntIntToInt BitwiseOr = True
+opIsIntIntToInt LeftShift = True
+opIsIntIntToInt RightShift = True
+opIsIntIntToInt _ = False
+
+opIsIntIntToBool :: Op -> Bool
+opIsIntIntToBool IntLt = True
+opIsIntIntToBool IntLe = True
+opIsIntIntToBool IntGt = True
+opIsIntIntToBool IntGe = True
+opIsIntIntToBool Equals = True
+opIsIntIntToBool EqualsNot = True
+opIsIntIntToBool _ = False
+
+opIsBoolBoolToBool :: Op -> Bool
+opIsBoolBoolToBool LogicalAnd = True
+opIsBoolBoolToBool LogicalOr = True
+opIsBoolBoolToBool Equals = True
+opIsBoolBoolToBool EqualsNot = True
+opIsBoolBoolToBool _ = False
 
 -- re-exported for convenience
 posPretty :: SourcePos -> String
