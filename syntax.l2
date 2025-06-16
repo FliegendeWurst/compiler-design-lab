@@ -1,0 +1,101 @@
+int main() {
+  int result;
+  int a;
+
+  // Test: <block> variant of <stmt>
+  {
+    {
+      {
+        {
+          a = 15 ^ 42;
+          { } // Empty block
+        }
+      }
+    }
+  }
+  result += a;
+  // Test: <control> / for loop
+  for (int b = 0; b < b + 1; b += 1) {
+    result += b;
+    if (b == 10) {
+      break;
+    }
+  }
+  // Test: "duplicated" (scoped) variable names
+  for (int b = 25; b < b + 1; b += 1) {
+    result += b;
+    if (b == 30) {
+      break;
+    }
+  }
+
+  // Test: bad if syntax
+  if (0 == 0)
+    result += 20;
+  else
+    return 1/0;
+  if (0 != 0)
+    return 1/0;
+  else
+    result += 21;
+
+  // Test: new integer binary operators
+  result <<= 1;
+  int temp = 7;
+  temp >>= 1;
+  result += temp;
+  temp &= 2;
+  result += temp;
+  temp |= 8;
+  result += temp;
+  temp ^= 2;
+  result += temp;
+  // Test: new integer unary operators
+  temp = ~temp;
+  temp >>= 16;
+  result += temp;
+
+  // Test: boolean ops
+  if (5 != 5) {
+    return 1/0;
+  } else {
+    result += 1;
+  }
+  if (5 == 6) {
+    return 1/0;
+  } else {
+    result += 1;
+  }
+  if (5 > 5) {
+    return 1/0;
+  } else {
+    result += 1;
+  }
+  if (5 >= 6) {
+    return 1/0;
+  } else {
+    result += 1;
+  }
+  if (5 <= 4) {
+    return 1/0;
+  } else {
+    result += 1;
+  }
+  if (5 < 5) {
+    return 1/0;
+  } else {
+    result += 1;
+  }
+
+  // Test: <control> / if / else-if
+  // Test: eq. operators
+  if (result != 15) {
+    return 1/0;
+  } else if (result == 15) {
+    return result;
+  } else {
+    // unreachable, technically needed
+    return 99;
+  }
+  // Test: control flow analysis
+}

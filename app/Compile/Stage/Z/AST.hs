@@ -6,7 +6,7 @@ import Compile.IR.Z (Z, Function (Function), Stmt (..), Expr (..), BinOp (..), U
 import qualified Compile.AST as AST
 
 fromASTToZ :: AST -> Z
-fromASTToZ (AST.Block stmts _) = [function' "main" stmts]
+fromASTToZ (AST.Function stmts _) = [function' "main" stmts]
 
 function' :: String -> [ AST.Stmt ] -> Function
 function' name stmts = Function name (map stmt' stmts)
@@ -29,13 +29,27 @@ binOp' (Just AST.Sub) = Just Sub
 binOp' (Just AST.Mul) = Just Mul
 binOp' (Just AST.Div) = Just Div
 binOp' (Just AST.Mod) = Just Mod
+binOp' (Just AST.BitwiseAnd) = Just BitwiseAnd
+binOp' (Just AST.BitwiseXor) = Just BitwiseXor
+binOp' (Just AST.BitwiseOr) = Just BitwiseOr
+binOp' (Just AST.LogicalAnd) = Just LogicalAnd
+binOp' (Just AST.LogicalOr) = Just LogicalOr
+binOp' (Just AST.LeftShift) = Just LeftShift
+binOp' (Just AST.RightShift) = Just RightShift
+binOp' (Just AST.IntLt) = Just IntLt
+binOp' (Just AST.IntLe) = Just IntLe
+binOp' (Just AST.IntGt) = Just IntGt
+binOp' (Just AST.IntGe) = Just IntGe
+binOp' (Just AST.Equals) = Just Equals
+binOp' (Just AST.EqualsNot) = Just EqualsNot
+binOp' (Just AST.Ternary1) = Just Ternary1
+binOp' (Just AST.Ternary2) = Just Ternary2
 binOp' Nothing = Nothing
 binOp' x = error $ "illegal binary operator " ++ show x
 
 unOp' :: AST.Op -> UnOp
 unOp' AST.Neg = Neg
+unOp' AST.LogicalNot = LogicalNot
+unOp' AST.BitwiseNot = BitwiseNot
 unOp' x = error $ "illegal unary operator " ++ show x
 
-unwrap :: Maybe a -> a
-unwrap (Just it) = it
-unwrap Nothing = error "tried to unwrap nothing"

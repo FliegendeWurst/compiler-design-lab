@@ -5,7 +5,7 @@ module Compile.Parser
   ( parseAST
   ) where
 
-import           Compile.AST (AST(..), Expr(..), Op(..), Stmt(..), HexOrDecInteger (..))
+import           Compile.AST (AST(..), Expr(..), Op(..), Stmt(..), Simp(..), Ctrl(..), HexOrDecInteger (..))
 import           Error (L1ExceptT, parserFail)
 
 import           Control.Monad.Combinators.Expr
@@ -42,7 +42,7 @@ astParser = do
   ast <- braces $ do
     pos <- getSourcePos
     stmts <- many stmt
-    return $ Block stmts pos
+    return $ Function stmts pos
   void eof
   return ast
 
@@ -60,7 +60,7 @@ declNoInit = do
   pos <- getSourcePos
   reserved "int"
   name <- identifier
-  return $ Decl name pos
+  return $ Simple $ Decl name pos
 
 declInit :: Parser Stmt
 declInit = do
@@ -69,7 +69,7 @@ declInit = do
   name <- identifier
   void $ symbol "="
   e <- expr
-  return $ Init name e pos
+  return $ Simple $ Init name e pos
 
 simp :: Parser Stmt
 simp = do
@@ -77,7 +77,7 @@ simp = do
   name <- identifier
   op <- asnOp
   e <- expr
-  return $ Asgn name op e pos
+  return $ Simple $ Asgn name op e pos
 
 asnOp :: Parser (Maybe Op)
 asnOp = do
@@ -88,6 +88,11 @@ asnOp = do
     "-=" -> pure (Just Sub)
     "/=" -> pure (Just Div)
     "%=" -> pure (Just Mod)
+    "&=" -> pure (Just BitwiseAnd)
+    "^=" -> pure (Just BitwiseXor)
+    "|=" -> pure (Just BitwiseOr)
+    "<<=" -> pure (Just LeftShift)
+    ">>=" -> pure (Just RightShift)
     "=" -> pure Nothing
     x -> fail $ "Nonexistent assignment operator: " ++ x
   <?> "assignment operator"
@@ -97,16 +102,27 @@ ret = do
   pos <- getSourcePos
   reserved "return"
   e <- expr
-  return $ Ret e pos
+  return $ Control $ Ret e pos
 
 expr' :: Parser Expr
-expr' = parens expr <|> intExpr <|> identExpr <|> unExpr
+expr' = parens expr <|> intExpr <|> boolLit1 <|> boolLit2 <|> identExpr <|> unExpr
 
 intExpr :: Parser Expr
 intExpr = do
   pos <- getSourcePos
   val <- number
   return $ IntExpr val pos
+
+-- TODO refactor
+boolLit1 :: Parser Expr
+boolLit1 = do
+  reserved "true"
+  return $ BoolLit True
+
+boolLit2 :: Parser Expr
+boolLit2 = do
+  reserved "false"
+  return $ BoolLit False
 
 unExpr :: Parser Expr
 unExpr = do
@@ -121,12 +137,42 @@ identExpr = do
 
 opTable :: [[Operator Parser Expr]]
 opTable =
-  [ [Prefix (UnExpr Neg <$ symbol "-")]
+  [ [ Prefix (UnExpr Neg <$ symbol "-")
+    , Prefix (UnExpr LogicalNot <$ symbol "!")
+    , Prefix (UnExpr BitwiseNot <$ symbol "~")
+    ]
   , [ InfixL (BinExpr Mul <$ symbol "*")
     , InfixL (BinExpr Div <$ symbol "/")
     , InfixL (BinExpr Mod <$ symbol "%")
     ]
-  , [InfixL (BinExpr Add <$ symbol "+"), InfixL (BinExpr Sub <$ symbol "-")]
+  , [ InfixL (BinExpr Add <$ symbol "+")
+    , InfixL (BinExpr Sub <$ symbol "-")
+    ]
+  , [ InfixL (BinExpr LeftShift <$ symbol "<<")
+    , InfixL (BinExpr RightShift <$ symbol ">>")
+    ]
+  , [ InfixL (BinExpr IntLt <$ symbol "<")
+    , InfixL (BinExpr IntLe <$ symbol "<=")
+    , InfixL (BinExpr IntGt <$ symbol ">")
+    , InfixL (BinExpr IntGe <$ symbol ">=")
+    ]
+  , [ InfixL (BinExpr Equals <$ symbol "==")
+    , InfixL (BinExpr EqualsNot <$ symbol "!=")
+    ]
+  , [ InfixL (BinExpr BitwiseAnd <$ symbol "&")
+    ]
+  , [ InfixL (BinExpr BitwiseXor <$ symbol "^")
+    ]
+  , [ InfixL (BinExpr BitwiseOr <$ symbol "|")
+    ]
+  , [ InfixL (BinExpr LogicalAnd <$ symbol "&&")
+    ]
+  , [ InfixL (BinExpr LogicalOr <$ symbol "||")
+    ]
+  -- The odds of this crap parsing ternary expressions correctly are low.
+  , [ InfixR (BinExpr Ternary1 <$ symbol "?")
+    , InfixR (BinExpr Ternary2 <$ symbol ":")
+    ]
   ]
 
 expr :: Parser Expr

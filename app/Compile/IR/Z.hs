@@ -37,8 +37,25 @@ data BinOp
   | Sub
   | Div
   | Mod
+  | BitwiseAnd
+  | BitwiseXor
+  | BitwiseOr
+  | LogicalAnd
+  | LogicalOr
+  | LeftShift
+  | RightShift
+  | IntLt
+  | IntLe
+  | IntGt
+  | IntGe
+  | Equals
+  | EqualsNot
+  | Ternary1
+  | Ternary2
   deriving (Eq, Show)
 
 data UnOp
   = Neg
+  | LogicalNot
+  | BitwiseNot
   deriving (Eq, Show)

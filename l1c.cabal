@@ -46,6 +46,7 @@ executable l1c
                   Compile.Stage.Y.Z,
                   Compile.Stage.X.Y,
                   Compile.Stage.A.X,
-                  Error
+                  Error,
+                  Util
     hs-source-dirs:   app
     default-language: Haskell2010
