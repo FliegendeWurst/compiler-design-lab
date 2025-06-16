@@ -29,17 +29,17 @@ compile :: Job -> L1ExceptT ()
 compile job = do
   ast <- parseAST $ src job
   liftIO $ print "AST parsed.."
-  liftIO $ print ast
+  -- liftIO $ print ast
   semanticAnalysis ast
   let z = fromASTToZ ast
   liftIO $ print "Z-IR lowering done.."
-  liftIO $ print z
+  -- liftIO $ print z
   let y = fromZToY z
   liftIO $ print "Y-IR lowering done.."
-  liftIO $ print y
+  -- liftIO $ print y
   let x = fromYToX y
   liftIO $ print "X-IR lowering done.."
-  liftIO $ print x
+  -- liftIO $ print x
   let a = fromXToA x (constProp job)
   liftIO $ print "A-IR lowering done.."
   -- let aFile = out job ++ ".a"
